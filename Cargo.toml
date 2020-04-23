@@ -1,5 +1,5 @@
 [package]
-name = "nes"
+name = "nes_rs"
 version = "0.1.0"
 authors = ["nathan"]
 edition = "2018"

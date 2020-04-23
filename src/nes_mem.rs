@@ -38,7 +38,7 @@ impl RegionType {
         }
     }
 
-    fn write_u16(&mut self, offset: usize, val: u16) {
+    fn _write_u16(&mut self, offset: usize, val: u16) {
         match self {
             RegionType::Rom { data: _ } => {}
             RegionType::Ram { data } => {
@@ -211,12 +211,12 @@ impl MemoryMap {
         }
     }
 
-    pub fn write_u16(&mut self, address: usize, val: u16) {
+    pub fn _write_u16(&mut self, address: usize, val: u16) {
         match address {
             0x0000..=0xffff => {
                 for r in &mut self.regions {
                     if address >= r.start && address < r.end {
-                        return r.region.write_u16(address - r.start, val);
+                        return r.region._write_u16(address - r.start, val);
                     }
                 }
                 error!("Memory address not mapped: {:04x}", address);

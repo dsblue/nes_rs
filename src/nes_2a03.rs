@@ -1,14 +1,14 @@
 use crate::MemoryMap;
 
-const OP_MODE_MASK: u8 = 0b0001_1100;
-const OP_MODE_0: u8 = 0b0000_0000;
-const OP_MODE_1: u8 = 0b0000_0100;
-const OP_MODE_2: u8 = 0b0000_1000;
-const OP_MODE_3: u8 = 0b0000_1100;
-const OP_MODE_4: u8 = 0b0001_0000;
-const OP_MODE_5: u8 = 0b0001_0100;
-const OP_MODE_6: u8 = 0b0001_1000;
-const OP_MODE_7: u8 = 0b0001_1100;
+const _OP_MODE_MASK: u8 = 0b0001_1100;
+const _OP_MODE_0: u8 = 0b0000_0000;
+const _OP_MODE_1: u8 = 0b0000_0100;
+const _OP_MODE_2: u8 = 0b0000_1000;
+const _OP_MODE_3: u8 = 0b0000_1100;
+const _OP_MODE_4: u8 = 0b0001_0000;
+const _OP_MODE_5: u8 = 0b0001_0100;
+const _OP_MODE_6: u8 = 0b0001_1000;
+const _OP_MODE_7: u8 = 0b0001_1100;
 
 const N: u8 = 0b1000_0000; // Negitive
 const V: u8 = 0b1000_0000; // Overflow
@@ -30,7 +30,7 @@ enum AddressMode {
     Abx,
     Aby,
     Ind,
-    Rel,
+    _Rel,
 }
 
 #[derive(Debug)]
@@ -113,12 +113,12 @@ enum Instruction {
     Tas,
     Xaa,
 
-    Invalid,
-    Unimplemented,
+    _Invalid,
+    _Unimplemented,
 }
 
 impl Instruction {
-    fn info(&self) -> (&str, &str) {
+    fn _info(&self) -> (&str, &str) {
         use Instruction::*;
 
         match *self {
@@ -178,11 +178,11 @@ impl Cpu6502 {
         self.reg_pc = self.mm.read_u16(0xfffc);
     }
 
-    fn fetch_op(&mut self) {
-        let op = self.mm.read_u8(self.reg_pc as usize);
-
-        self.inst = self.decode_op(op);
-    }
+    //fn fetch_op(&mut self) {
+    //    let op = self.mm.read_u8(self.reg_pc as usize);
+    //
+    //    self.inst = self.decode_op(op);
+    //}
 
     fn decode_op(&mut self, op: u8) -> Instruction {
         use AddressMode::*;
@@ -449,7 +449,6 @@ impl Cpu6502 {
     }
 
     fn process_op(&mut self, op: u8) {
-        use AddressMode::*;
         use Instruction::*;
 
         let inst = self.decode_op(op);
@@ -457,6 +456,7 @@ impl Cpu6502 {
         //info!("{} - {} - {:?}", inst.info().0, inst.info().1, inst);
 
         match inst {
+            Nop => self.ex_nop(),
             Clc => self.ex_clc(),
             Cld => self.ex_cld(),
             Cli => self.ex_cli(),
@@ -518,14 +518,6 @@ impl Cpu6502 {
         self.count += 1;
     }
 
-    fn set_status(&mut self, bits: u8) {
-        self.reg_p |= bits;
-    }
-
-    fn clr_status(&mut self, bits: u8) {
-        self.reg_p &= !bits;
-    }
-
     fn ex_clc(&mut self) {
         self.reg_pc += 1;
         self.cycle = 2;
@@ -567,7 +559,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & C == 0) {
+        if (self.reg_p & C) == 0 {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -577,7 +569,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & C == C) {
+        if (self.reg_p & C) == C {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -587,7 +579,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & Z == Z) {
+        if (self.reg_p & Z) == Z {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -597,7 +589,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & N == N) {
+        if (self.reg_p & N) == N {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -607,7 +599,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & Z == 0) {
+        if (self.reg_p & Z) == 0 {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -617,7 +609,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & N == 0) {
+        if (self.reg_p & N) == 0 {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -627,7 +619,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & V == 0) {
+        if (self.reg_p & V) == 0 {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -637,7 +629,7 @@ impl Cpu6502 {
         self.reg_pc += 1;
         self.cycle = 2; // More complicated
       
-        if (self.reg_p & V == V) {
+        if (self.reg_p & V) == V {
             self.reg_pc += self.mm.read_u8(o) as u16;
         }
     }
@@ -648,10 +640,10 @@ impl Cpu6502 {
         self.cycle = 2;
         self.reg_x = self.reg_a;
 
-        if (self.reg_x == 0) {
+        if self.reg_x == 0 {
             self.reg_p |= Z;
         }
-        if (self.reg_x & 0x80 == 0x80) {
+        if (self.reg_x & 0x80) == 0x80 {
             self.reg_p |= N;
         }
     }
@@ -662,10 +654,10 @@ impl Cpu6502 {
         self.cycle = 2;
         self.reg_y = self.reg_a;
 
-        if (self.reg_y == 0) {
+        if self.reg_y == 0 {
             self.reg_p |= Z;
         }
-        if (self.reg_y & 0x80 == 0x80) {
+        if (self.reg_y & 0x80) == 0x80 {
             self.reg_p |= N;
         }
     }
@@ -676,10 +668,10 @@ impl Cpu6502 {
         self.cycle = 2;
         self.reg_x = self.reg_s;
 
-        if (self.reg_x == 0) {
+        if self.reg_x == 0 {
             self.reg_p |= Z;
         }
-        if (self.reg_x & 0x80 == 0x80) {
+        if (self.reg_x & 0x80) == 0x80 {
             self.reg_p |= N;
         }
     }
@@ -690,10 +682,10 @@ impl Cpu6502 {
         self.cycle = 2;
         self.reg_a = self.reg_x;
 
-        if (self.reg_a == 0) {
+        if self.reg_a == 0 {
             self.reg_p |= Z;
         }
-        if (self.reg_a & 0x80 == 0x80) {
+        if (self.reg_a & 0x80) == 0x80 {
             self.reg_p |= N;
         }
     }
@@ -711,13 +703,13 @@ impl Cpu6502 {
         self.cycle = 2;
         self.reg_a = self.reg_y;
 
-        if (self.reg_a == 0) {
+        if self.reg_a == 0 {
             self.reg_p |= Z;
         } else {
             self.reg_p &= !Z;
         }
 
-        if (self.reg_a & 0x80 == 0x80) {
+        if (self.reg_a & 0x80) == 0x80 {
             self.reg_p |= N;
         } else {
             self.reg_p &= !N;
@@ -763,13 +755,13 @@ impl Cpu6502 {
 
         self.reg_y = self.mm.read_u8(addr);
 
-        if (self.reg_y == 0) {
+        if self.reg_y == 0 {
             self.reg_p |= Z;
         } else {
             self.reg_p &= !Z;
         }
 
-        if (self.reg_y & 0x80 == 0x80) {
+        if (self.reg_y & 0x80) == 0x80 {
             self.reg_p |= N;
         } else {
             self.reg_p &= !N;
@@ -815,13 +807,13 @@ impl Cpu6502 {
 
         self.reg_x = self.mm.read_u8(addr);
 
-        if (self.reg_x == 0) {
+        if self.reg_x == 0 {
             self.reg_p |= Z;
         } else {
             self.reg_p &= !Z;
         }
 
-        if (self.reg_x & 0x80 == 0x80) {
+        if (self.reg_x & 0x80) == 0x80 {
             self.reg_p |= N;
         } else {
             self.reg_p &= !N;
@@ -885,13 +877,13 @@ impl Cpu6502 {
 
         self.reg_a = self.mm.read_u8(addr);
 
-        if (self.reg_a == 0) {
+        if self.reg_a == 0 {
             self.reg_p |= Z;
         } else {
             self.reg_p &= !Z;
         }
 
-        if (self.reg_a & 0x80 == 0x80) {
+        if (self.reg_a & 0x80) == 0x80 {
             self.reg_p |= N;
         } else {
             self.reg_p &= !N;
@@ -954,7 +946,6 @@ impl Cpu6502 {
     // STX Store X to memory
     fn ex_stx(&mut self, m: AddressMode) {
         let o = (self.reg_pc + 1) as usize;
-        let x = self.reg_x as usize;
         let y = self.reg_y as usize;
 
         let addr = match m {
@@ -986,7 +977,6 @@ impl Cpu6502 {
     fn ex_sty(&mut self, m: AddressMode) {
         let o = (self.reg_pc + 1) as usize;
         let x = self.reg_x as usize;
-        let y = self.reg_y as usize;
 
         let addr = match m {
             AddressMode::Zp => {
@@ -1013,13 +1003,7 @@ impl Cpu6502 {
         self.mm.write_u8(addr, self.reg_y);
     }
 
-    // ADD to accumulator with carry
-    fn ex_adc(&mut self, op: u8) {
-        trace!("adc {}", op);
-    }
-
     fn ex_nop(&mut self) {
-        trace!("nop");
     }
 }
 
