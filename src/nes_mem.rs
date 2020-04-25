@@ -191,11 +191,19 @@ impl MemoryMap {
             }
             0x2000..=0x3fff => {
                 // PPU Registers
-                error!("PPU Not implemented: Write 0x{:04x}: 0x{:02x}", (address & 0b111), val);
+                error!(
+                    "PPU Not implemented: Write 0x{:04x}: 0x{:02x}",
+                    (address & 0b111),
+                    val
+                );
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
-                error!("APU Not implemented: Write 0x{:04x}: 0x{:02x}", (address - 0x4000), val);
+                error!(
+                    "APU Not implemented: Write 0x{:04x}: 0x{:02x}",
+                    (address - 0x4000),
+                    val
+                );
             }
             0x4020..=0xffff => {
                 for r in &mut self.regions {
