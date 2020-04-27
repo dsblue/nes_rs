@@ -43,7 +43,7 @@ fn main() {
 
     cpu.reset();
 
-    for _ in 1..40 {
+    for _ in 1..400 {
         cpu.tick();
         thread::sleep(Duration::from_millis(10));
     }

@@ -536,12 +536,14 @@ impl Cpu6502 {
                 let op = self.mm.read_u8(self.reg_pc as usize);
                 self.inst = self.decode_op(op);
 
+                let operand = self.mm.read_u8(self.reg_pc as usize + 1);
                 trace!(
-                    "{:08}\t{:02}\t0x{:04x} - {:?}",
+                    "{:08}\t{:02}\t0x{:04x} - {:?} {:02x}",
                     self.count,
                     self.cycle,
                     self.reg_pc,
-                    self.inst
+                    self.inst,
+                    operand
                 );
                 self.reg_pc += 1;
                 self.cycle = 2;
@@ -593,6 +595,15 @@ impl Cpu6502 {
                     Lax(m) => self.ex_lax(m),
                     Nop(m) => self.ex_nop(m),
 
+                    Bcc => self.ex_bcc(),
+                    Bcs => self.ex_bcs(),
+                    Beq => self.ex_beq(),
+                    Bmi => self.ex_bmi(),
+                    Bne => self.ex_bne(),
+                    Bpl => self.ex_bpl(),
+                    Bvc => self.ex_bvc(),
+                    Bvs => self.ex_bvs(),
+
                     _ => (),
                 }
             }
@@ -632,82 +643,98 @@ impl Cpu6502 {
     }
 
     fn ex_bcc(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & C) == 0 {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & C) == 0 {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_bcs(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & C) == C {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & C) == C {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_beq(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & Z) == Z {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & Z) == Z {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_bmi(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & N) == N {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & N) == N {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_bne(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & Z) == 0 {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & Z) == 0 {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_bpl(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & N) == 0 {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & N) == 0 {
+                self.reg_pc = self.addr;
+            }
         }
     }
 
     fn ex_bvc(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & V) == 0 {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & V) == 0 {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
     fn ex_bvs(&mut self) {
-        let o = (self.reg_pc + 1) as usize;
-        self.reg_pc += 2;
-        self.cycle = 2; // More complicated
+        self.handle_branch();
 
-        if (self.reg_p & V) == V {
-            self.reg_pc += self.mm.read_u8(o) as u16;
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & V) == V {
+                self.reg_pc += self.value as u16;
+            }
         }
     }
 
@@ -760,6 +787,30 @@ impl Cpu6502 {
 
         // Update N and Z flags
         stat_nz!(self.reg_p, self.reg_a);
+    }
+
+    fn handle_branch(&mut self) {
+        let pc = self.reg_pc as usize;
+
+        error!("Not cycle accurate yet");
+
+        match self.cycle {
+            2 => {
+                self.value = self.mm.read_u8(pc);
+                self.addr = 
+                    if (0x80 & self.value) == 0x80 {
+                        self.reg_pc - 3 - (!self.value) as u16 
+                    } else {
+                        self.reg_pc - 1 + self.value as u16
+                    };
+                self.reg_pc += 1;
+                self.cycle = 1;
+            }
+            3 => {}
+            4 => {}
+            5 => {}
+            _ => (),
+        }
     }
 
     fn handle_read(&mut self, m: AddressMode) {

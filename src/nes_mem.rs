@@ -16,6 +16,7 @@ enum RegionType {
 
 impl RegionType {
     fn read_u8(&self, offset: usize) -> u8 {
+
         match self {
             RegionType::Rom { data } => data[offset],
             RegionType::Ram { data } => data[offset],
