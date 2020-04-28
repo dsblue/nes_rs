@@ -147,12 +147,12 @@ impl Instruction {
 
 #[derive(Debug)]
 pub struct Cpu6502 {
-    reg_a: u8,      // Accumulator
-    reg_x: u8,      // Index X
-    reg_y: u8,      // Index Y
-    reg_pc: u16,    // Program counter
-    reg_s: u8,      // Stack pointer
-    reg_p: u8,      // Status
+    reg_a: u8,   // Accumulator
+    reg_x: u8,   // Index X
+    reg_y: u8,   // Index Y
+    reg_pc: u16, // Program counter
+    reg_s: u8,   // Stack pointer
+    reg_p: u8,   // Status
 
     count: u64,
     mm: MemoryMap,
@@ -485,7 +485,7 @@ impl Cpu6502 {
 
                 //println!("{}", self);
 
-                self.reg_pc += 1;
+                self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
             _ => {
@@ -574,7 +574,7 @@ impl Cpu6502 {
                 } else {
                     self.reg_pc - 1 + self.value as u16
                 };
-                self.reg_pc += 1;
+                self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle = 1;
             }
             3 => {}
@@ -592,7 +592,7 @@ impl Cpu6502 {
             AddressMode::Zp => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
@@ -602,15 +602,13 @@ impl Cpu6502 {
                 4 => {
                     self.cycle += 1;
                 }
-                5 => {
-                    self.cycle = 1
-                }
+                5 => self.cycle = 1,
                 _ => (),
-            }
+            },
             AddressMode::Zpx => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
@@ -628,16 +626,16 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Abs => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -651,17 +649,17 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Abx => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = self.addr + self.reg_x as u16;
+                    self.addr = self.addr.wrapping_add(self.reg_x as u16);
                     self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -678,7 +676,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             _ => panic!("Invalid mode: {:?}", m),
         }
     }
@@ -695,18 +693,18 @@ impl Cpu6502 {
             }
             AddressMode::Imm => {
                 self.value = self.mm.read_u8(pc);
-                self.reg_pc += 1;
+                self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle = 1;
             }
             AddressMode::Abs => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -719,13 +717,13 @@ impl Cpu6502 {
                 match self.cycle {
                     2 => {
                         self.addr = self.mm.read_u8(pc) as u16;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     3 => {
                         self.addr = self.addr + self.reg_x as u16;
                         self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     4 => {
@@ -743,13 +741,13 @@ impl Cpu6502 {
                 match self.cycle {
                     2 => {
                         self.addr = self.mm.read_u8(pc) as u16;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     3 => {
                         self.addr = self.addr + self.reg_y as u16;
                         self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     4 => {
@@ -766,12 +764,12 @@ impl Cpu6502 {
             AddressMode::Izx => match self.cycle {
                 2 => {
                     self.ptr = self.mm.read_u8(pc);
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.ptr += self.reg_x;
+                    self.ptr = self.ptr.wrapping_add(self.reg_x);
                     self.cycle += 1;
                 }
                 4 => {
@@ -779,6 +777,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    // This MAY overflow, but ignore for now
                     self.addr |= (self.mm.read_u8(ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
@@ -791,12 +790,12 @@ impl Cpu6502 {
             AddressMode::Izy => match self.cycle {
                 2 => {
                     self.ptr = self.mm.read_u8(pc);
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.ptr += self.reg_y;
+                    self.ptr = self.ptr.wrapping_add(self.reg_y);
                     self.cycle += 1;
                 }
                 4 => {
@@ -804,6 +803,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    // This MAY overflow, but ignore for now
                     self.addr |= (self.mm.read_u8(ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
@@ -816,7 +816,7 @@ impl Cpu6502 {
             AddressMode::Zp => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
@@ -828,11 +828,11 @@ impl Cpu6502 {
             AddressMode::Zpx => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.mm.read_u8(addr) + self.reg_x) as u16;
+                    self.addr = (self.mm.read_u8(addr).wrapping_add(self.reg_x)) as u16;
                     self.cycle += 1;
                 }
                 4 => {
@@ -844,11 +844,11 @@ impl Cpu6502 {
             AddressMode::Zpy => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.mm.read_u8(addr) + self.reg_y) as u16;
+                    self.addr = (self.mm.read_u8(addr).wrapping_add(self.reg_y)) as u16;
                     self.cycle += 1;
                 }
                 4 => {
@@ -871,12 +871,12 @@ impl Cpu6502 {
             AddressMode::Abs => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -889,13 +889,13 @@ impl Cpu6502 {
                 match self.cycle {
                     2 => {
                         self.addr = self.mm.read_u8(pc) as u16;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     3 => {
-                        self.addr = self.addr + self.reg_x as u16;
+                        self.addr = self.addr.wrapping_add(self.reg_x as u16);
                         self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     4 => {
@@ -913,13 +913,13 @@ impl Cpu6502 {
                 match self.cycle {
                     2 => {
                         self.addr = self.mm.read_u8(pc) as u16;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     3 => {
-                        self.addr = self.addr + self.reg_y as u16;
+                        self.addr = self.addr.wrapping_add(self.reg_y as u16);
                         self.addr |= (self.mm.read_u8(pc) as u16) << 8;
-                        self.reg_pc += 1;
+                        self.reg_pc = self.reg_pc.wrapping_add(1);
                         self.cycle += 1;
                     }
                     4 => {
@@ -936,12 +936,12 @@ impl Cpu6502 {
             AddressMode::Izx => match self.cycle {
                 2 => {
                     self.ptr = self.mm.read_u8(pc);
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.ptr += self.reg_x;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -961,12 +961,12 @@ impl Cpu6502 {
             AddressMode::Izy => match self.cycle {
                 2 => {
                     self.ptr = self.mm.read_u8(pc);
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.ptr += self.reg_y;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -986,7 +986,7 @@ impl Cpu6502 {
             AddressMode::Zp => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
@@ -998,11 +998,11 @@ impl Cpu6502 {
             AddressMode::Zpx => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.mm.read_u8(addr) + self.reg_x) as u16;
+                    self.addr = (self.mm.read_u8(addr).wrapping_add(self.reg_x)) as u16;
                     self.cycle += 1;
                 }
                 4 => {
@@ -1014,11 +1014,11 @@ impl Cpu6502 {
             AddressMode::Zpy => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
-                    self.reg_pc += 1;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.mm.read_u8(addr) + self.reg_y) as u16;
+                    self.addr = (self.mm.read_u8(addr).wrapping_add(self.reg_y)) as u16;
                     self.cycle += 1;
                 }
                 4 => {
@@ -1164,7 +1164,8 @@ impl Cpu6502 {
         self.handle_read_modify_write(m);
 
         if self.cycle == 1 {
-            self.mm.write_u8(self.addr as usize, self.value - 1);
+            self.mm
+                .write_u8(self.addr as usize, self.value.wrapping_sub(1));
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
@@ -1173,7 +1174,7 @@ impl Cpu6502 {
 
     // DEX Decrement X
     fn ex_dex(&mut self) {
-        self.reg_x -= 1;
+        self.reg_x = self.reg_x.wrapping_sub(1);
         self.cycle = 1;
 
         // Update N and Z flags
@@ -1182,7 +1183,7 @@ impl Cpu6502 {
 
     // DEY Decrement Y
     fn ex_dey(&mut self) {
-        self.reg_y -= 1;
+        self.reg_y = self.reg_y.wrapping_sub(1);
         self.cycle = 1;
 
         // Update N and Z flags
@@ -1194,7 +1195,8 @@ impl Cpu6502 {
         self.handle_read_modify_write(m);
 
         if self.cycle == 1 {
-            self.mm.write_u8(self.addr as usize, self.value + 1);
+            self.mm
+                .write_u8(self.addr as usize, self.value.wrapping_add(1));
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
@@ -1203,7 +1205,7 @@ impl Cpu6502 {
 
     // INX Increment X
     fn ex_inx(&mut self) {
-        self.reg_x += 1;
+        self.reg_x = self.reg_x.wrapping_add(1);
         self.cycle = 1;
 
         // Update N and Z flags
@@ -1212,7 +1214,7 @@ impl Cpu6502 {
 
     // INY Increment Y
     fn ex_iny(&mut self) {
-        self.reg_y += 1;
+        self.reg_y = self.reg_y.wrapping_add(1);
         self.cycle = 1;
 
         // Update N and Z flags
@@ -1300,6 +1302,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             self.reg_y = self.value;
+
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_y);
         }
@@ -1311,6 +1314,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             self.reg_a = self.value ^ self.reg_a;
+
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
         }
@@ -1322,6 +1326,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             self.reg_a = self.value & self.reg_a;
+
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
         }
@@ -1333,6 +1338,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             self.reg_a = self.value | self.reg_a;
+
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
         }
@@ -1386,21 +1392,21 @@ impl Cpu6502 {
     // AHX Store A & X & (ADDR_HI + 1) to memory
     fn ex_ahx(&mut self, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
-        self.value = self.reg_a & self.reg_x & (self.addr >> 8) as u8 + 1;
+        self.value = self.reg_a & self.reg_x & ((self.addr >> 8) as u8).wrapping_add(1);
         self.handle_write(m);
     }
 
     // SHX Store X & (ADDR_HI + 1)to memory
     fn ex_shx(&mut self, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
-        self.value = self.reg_x & (self.addr >> 8) as u8 + 1;
+        self.value = self.reg_x & ((self.addr >> 8) as u8).wrapping_add(1);
         self.handle_write(m);
     }
 
     // SHY Store Y & (ADDR_HI + 1) to memory
     fn ex_shy(&mut self, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
-        self.value = self.reg_y & (self.addr >> 8) as u8 + 1;
+        self.value = self.reg_y & ((self.addr >> 8) as u8).wrapping_add(1);
         self.handle_write(m);
     }
 
