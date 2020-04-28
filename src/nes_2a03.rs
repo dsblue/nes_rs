@@ -10,16 +10,6 @@
  */
 use crate::MemoryMap;
 
-const _OP_MODE_MASK: u8 = 0b0001_1100;
-const _OP_MODE_0: u8 = 0b0000_0000;
-const _OP_MODE_1: u8 = 0b0000_0100;
-const _OP_MODE_2: u8 = 0b0000_1000;
-const _OP_MODE_3: u8 = 0b0000_1100;
-const _OP_MODE_4: u8 = 0b0001_0000;
-const _OP_MODE_5: u8 = 0b0001_0100;
-const _OP_MODE_6: u8 = 0b0001_1000;
-const _OP_MODE_7: u8 = 0b0001_1100;
-
 const N: u8 = 0b1000_0000; // Negitive
 const V: u8 = 0b0100_0000; // Overflow
 const D: u8 = 0b0000_1000; // Decimal
@@ -56,7 +46,6 @@ enum AddressMode {
     Abx,
     Aby,
     Ind,
-    _Rel,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -158,14 +147,13 @@ impl Instruction {
 
 #[derive(Debug)]
 pub struct Cpu6502 {
-    reg_a: u8, // Accumulator
-    reg_x: u8,
-    reg_y: u8,
-    reg_pc: u16, // Program counter
-    reg_s: u8,   // Stack pointer
-    reg_p: u8,   // Status
+    reg_a: u8,      // Accumulator
+    reg_x: u8,      // Index X
+    reg_y: u8,      // Index Y
+    reg_pc: u16,    // Program counter
+    reg_s: u8,      // Stack pointer
+    reg_p: u8,      // Status
 
-    next_mem: u16,
     count: u64,
     mm: MemoryMap,
 
@@ -185,7 +173,6 @@ impl Cpu6502 {
             reg_pc: 0,
             reg_p: 0,
             reg_s: 0,
-            next_mem: 0xfffc,
 
             count: 0,
             mm: mm,
@@ -499,7 +486,7 @@ impl Cpu6502 {
                 //println!("{}", self);
 
                 self.reg_pc += 1;
-                self.cycle = 2;
+                self.cycle += 1;
             }
             _ => {
                 //trace!(
@@ -538,6 +525,13 @@ impl Cpu6502 {
                     Txs => self.ex_txs(),
                     Tya => self.ex_tya(),
 
+                    Dec(m) => self.ex_dec(m),
+                    Dex => self.ex_dex(),
+                    Dey => self.ex_dey(),
+                    Inc(m) => self.ex_inc(m),
+                    Inx => self.ex_inx(),
+                    Iny => self.ex_iny(),
+
                     Eor(m) => self.ex_eor(m),
                     Ora(m) => self.ex_ora(m),
                     And(m) => self.ex_and(m),
@@ -567,183 +561,6 @@ impl Cpu6502 {
         self.count += 1;
     }
 
-    fn ex_clc(&mut self) {
-        self.reg_p &= !C;
-        self.cycle = 1;
-    }
-
-    fn ex_cld(&mut self) {
-        self.reg_p &= !D;
-        self.cycle = 1;
-    }
-
-    fn ex_cli(&mut self) {
-        self.reg_p &= !I;
-        self.cycle = 1;
-    }
-
-    fn ex_sec(&mut self) {
-        self.reg_p |= C;
-        self.cycle = 1;
-    }
-
-    fn ex_sed(&mut self) {
-        self.reg_p |= D;
-        self.cycle = 1;
-    }
-
-    fn ex_sei(&mut self) {
-        self.reg_p |= I;
-        self.cycle = 1;
-    }
-
-    fn ex_bcc(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & C) == 0 {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bcs(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & C) == C {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_beq(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & Z) == Z {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bmi(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & N) == N {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bne(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & Z) == 0 {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bpl(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & N) == 0 {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bvc(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & V) == 0 {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    fn ex_bvs(&mut self) {
-        self.handle_branch();
-
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & V) == V {
-                self.reg_pc = self.addr;
-            }
-        }
-    }
-
-    // TAX Transfer A to X
-    fn ex_tax(&mut self) {
-        self.reg_x = self.reg_a;
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_x);
-    }
-
-    // TAY Transfer A to Y
-    fn ex_tay(&mut self) {
-        self.reg_y = self.reg_a;
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_y);
-    }
-
-    // TSX Transfer S to X
-    fn ex_tsx(&mut self) {
-        self.reg_x = self.reg_s;
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_x);
-    }
-
-    // TXA Transfer X to A
-    fn ex_txa(&mut self) {
-        self.reg_a = self.reg_x;
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_a);
-    }
-
-    // TXS Transfer X to stack pointer
-    fn ex_txs(&mut self) {
-        self.reg_s = self.reg_x;
-        self.cycle = 1;
-    }
-
-    // TYA Transfer Y to A
-    fn ex_tya(&mut self) {
-        self.reg_a = self.reg_y;
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_a);
-    }
-
     fn handle_branch(&mut self) {
         let pc = self.reg_pc as usize;
 
@@ -764,6 +581,105 @@ impl Cpu6502 {
             4 => {}
             5 => {}
             _ => (),
+        }
+    }
+
+    fn handle_read_modify_write(&mut self, m: AddressMode) {
+        let pc = self.reg_pc as usize;
+        let addr = self.addr as usize;
+
+        match m {
+            AddressMode::Zp => match self.cycle {
+                2 => {
+                    self.addr = self.mm.read_u8(pc) as u16;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.value = self.mm.read_u8(addr);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.cycle = 1
+                }
+                _ => (),
+            }
+            AddressMode::Zpx => match self.cycle {
+                2 => {
+                    self.addr = self.mm.read_u8(pc) as u16;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.addr = (self.mm.read_u8(addr) + self.reg_x) as u16;
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.mm.read_u8(addr & 0xff);
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.cycle += 1;
+                }
+                6 => {
+                    self.cycle = 1;
+                }
+                _ => (),
+            }
+            AddressMode::Abs => match self.cycle {
+                2 => {
+                    self.addr = self.mm.read_u8(pc) as u16;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.addr |= (self.mm.read_u8(pc) as u16) << 8;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.mm.read_u8(addr);
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.cycle += 1;
+                }
+                6 => {
+                    self.cycle = 1;
+                }
+                _ => (),
+            }
+            AddressMode::Abx => match self.cycle {
+                2 => {
+                    self.addr = self.mm.read_u8(pc) as u16;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.addr = self.addr + self.reg_x as u16;
+                    self.addr |= (self.mm.read_u8(pc) as u16) << 8;
+                    self.reg_pc += 1;
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.mm.read_u8(addr);
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.cycle += 1;
+                }
+                6 => {
+                    self.cycle += 1;
+                }
+                7 => {
+                    self.cycle = 1;
+                }
+                _ => (),
+            }
+            _ => panic!("Invalid mode: {:?}", m),
         }
     }
 
@@ -1113,6 +1029,245 @@ impl Cpu6502 {
             },
             _ => panic!("Invalid mode: {:?}", m),
         }
+    }
+
+    // Start specific Instruction handlers
+
+    fn ex_clc(&mut self) {
+        self.reg_p &= !C;
+        self.cycle = 1;
+    }
+
+    fn ex_cld(&mut self) {
+        self.reg_p &= !D;
+        self.cycle = 1;
+    }
+
+    fn ex_cli(&mut self) {
+        self.reg_p &= !I;
+        self.cycle = 1;
+    }
+
+    fn ex_sec(&mut self) {
+        self.reg_p |= C;
+        self.cycle = 1;
+    }
+
+    fn ex_sed(&mut self) {
+        self.reg_p |= D;
+        self.cycle = 1;
+    }
+
+    fn ex_sei(&mut self) {
+        self.reg_p |= I;
+        self.cycle = 1;
+    }
+
+    fn ex_bcc(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & C) == 0 {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bcs(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & C) == C {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_beq(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & Z) == Z {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bmi(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & N) == N {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bne(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & Z) == 0 {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bpl(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & N) == 0 {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bvc(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & V) == 0 {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    fn ex_bvs(&mut self) {
+        self.handle_branch();
+
+        error!("Inclomplete");
+
+        if self.cycle == 1 {
+            if (self.reg_p & V) == V {
+                self.reg_pc = self.addr;
+            }
+        }
+    }
+
+    // DEC Decrement memory
+    fn ex_dec(&mut self, m: AddressMode) {
+        self.handle_read_modify_write(m);
+
+        if self.cycle == 1 {
+            self.mm.write_u8(self.addr as usize, self.value - 1);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // DEX Decrement X
+    fn ex_dex(&mut self) {
+        self.reg_x -= 1;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // DEY Decrement Y
+    fn ex_dey(&mut self) {
+        self.reg_y -= 1;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_y);
+    }
+
+    // INC Increment memory
+    fn ex_inc(&mut self, m: AddressMode) {
+        self.handle_read_modify_write(m);
+
+        if self.cycle == 1 {
+            self.mm.write_u8(self.addr as usize, self.value + 1);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // INX Increment X
+    fn ex_inx(&mut self) {
+        self.reg_x += 1;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // INY Increment Y
+    fn ex_iny(&mut self) {
+        self.reg_y += 1;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_y);
+    }
+
+    // TAX Transfer A to X
+    fn ex_tax(&mut self) {
+        self.reg_x = self.reg_a;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // TAY Transfer A to Y
+    fn ex_tay(&mut self) {
+        self.reg_y = self.reg_a;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_y);
+    }
+
+    // TSX Transfer S to X
+    fn ex_tsx(&mut self) {
+        self.reg_x = self.reg_s;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // TXA Transfer X to A
+    fn ex_txa(&mut self) {
+        self.reg_a = self.reg_x;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_a);
+    }
+
+    // TXS Transfer X to stack pointer
+    fn ex_txs(&mut self) {
+        self.reg_s = self.reg_x;
+        self.cycle = 1;
+    }
+
+    // TYA Transfer Y to A
+    fn ex_tya(&mut self) {
+        self.reg_a = self.reg_y;
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_a);
     }
 
     // LDA Load to A
