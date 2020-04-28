@@ -143,10 +143,14 @@ impl MemoryMap {
             }
             0x2000..=0x3fff => {
                 // PPU Registers
-                (address & 0b111) as u8
+                ppu_read_u8(address & 0b111)
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
+                error!(
+                    "APU Not implemented: Read APU:0x{:04x}",
+                    (address - 0x4000)
+                );
                 (address - 0x4000) as u8
             }
             /*
@@ -193,7 +197,7 @@ impl MemoryMap {
             0x2000..=0x3fff => {
                 // PPU Registers
                 error!(
-                    "PPU Not implemented: Write 0x{:04x}: 0x{:02x}",
+                    "PPU Not implemented: Write PPU:0x{:04x}: 0x{:02x}",
                     (address & 0b111),
                     val
                 );
@@ -201,7 +205,7 @@ impl MemoryMap {
             0x4000..=0x401f => {
                 // NES APU and IO registers
                 error!(
-                    "APU Not implemented: Write 0x{:04x}: 0x{:02x}",
+                    "APU Not implemented: Write APU:0x{:04x}: 0x{:02x}",
                     (address - 0x4000),
                     val
                 );
@@ -234,5 +238,20 @@ impl MemoryMap {
                 error!("Memory address not mapped: {:04x}", address);
             }
         }
+    }
+}
+
+fn ppu_read_u8(addr: usize) -> u8 {
+    match addr {
+        0x00 => 0,
+        0x01 => 0,
+        0x02 => 0xff,
+        0x03 => 0,
+        0x04 => 0,
+        0x05 => 0,
+        0x06 => 0,
+        0x07 => 0,
+        0x14 => 0,
+        _ => 0,
     }
 }

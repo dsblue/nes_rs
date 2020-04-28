@@ -21,11 +21,11 @@ const _OP_MODE_6: u8 = 0b0001_1000;
 const _OP_MODE_7: u8 = 0b0001_1100;
 
 const N: u8 = 0b1000_0000; // Negitive
-const V: u8 = 0b1000_0000; // Overflow
-const D: u8 = 0b1000_0000; // Decimal
-const I: u8 = 0b1000_0000; // Interrupt Disable
-const Z: u8 = 0b1000_0000; // Zero
-const C: u8 = 0b1000_0000; // Carry
+const V: u8 = 0b0100_0000; // Overflow
+const D: u8 = 0b0000_1000; // Decimal
+const I: u8 = 0b0000_0100; // Interrupt Disable
+const Z: u8 = 0b0000_0010; // Zero
+const C: u8 = 0b0000_0001; // Carry
 
 macro_rules! stat_nz {
     ($p:expr, $reg:expr) => {
@@ -474,61 +474,8 @@ impl Cpu6502 {
         }
     }
 
-    fn process_op(&mut self, op: u8) {
-        use Instruction::*;
-
-        let inst = self.decode_op(op);
-
-        //info!("{} - {} - {:?}", inst.info().0, inst.info().1, inst);
-
-        match inst {
-            Clc => self.ex_clc(),
-            Cld => self.ex_cld(),
-            Cli => self.ex_cli(),
-
-            Sec => self.ex_sec(),
-            Sed => self.ex_sed(),
-            Sei => self.ex_sei(),
-
-            Sta(m) => self.ex_sta(m),
-            Stx(m) => self.ex_stx(m),
-            Sty(m) => self.ex_sty(m),
-
-            Lda(m) => self.ex_lda(m),
-            Ldx(m) => self.ex_ldx(m),
-            Ldy(m) => self.ex_ldy(m),
-
-            Tax => self.ex_tax(),
-            Tay => self.ex_tay(),
-            Tsx => self.ex_tsx(),
-            Txa => self.ex_txa(),
-            Txs => self.ex_txs(),
-            Tya => self.ex_tya(),
-
-            Bcc => self.ex_bcc(),
-            Bcs => self.ex_bcs(),
-            Beq => self.ex_beq(),
-            Bmi => self.ex_bmi(),
-            Bne => self.ex_bne(),
-            Bpl => self.ex_bpl(),
-            Bvc => self.ex_bvc(),
-            Bvs => self.ex_bvs(),
-
-            _ => {
-                warn!("Unimplemented Inst 0x{:02x}, {:?}", op, inst);
-                self.reg_pc += 1;
-            }
-        }
-    }
-
     pub fn tick(&mut self) {
         use Instruction::*;
-
-        //let op = self.mm.read_u8(self.reg_pc as usize);
-
-        //let inst = self.decode_op(op);
-
-        //self.process_op(op);
 
         match self.cycle {
             1 => {
@@ -536,26 +483,32 @@ impl Cpu6502 {
                 let op = self.mm.read_u8(self.reg_pc as usize);
                 self.inst = self.decode_op(op);
 
-                let operand = self.mm.read_u8(self.reg_pc as usize + 1);
+                let oper1 = self.mm.read_u8(self.reg_pc as usize + 1);
+                let oper2 = self.mm.read_u8(self.reg_pc as usize + 2);
+
                 trace!(
-                    "{:08}\t{:02}\t0x{:04x} - {:?} {:02x}",
+                    "{:08}\t{:02}\t0x{:04x} - {:?} {:02X} {:02X}",
                     self.count,
                     self.cycle,
                     self.reg_pc,
                     self.inst,
-                    operand
+                    oper1,
+                    oper2
                 );
+
+                //println!("{}", self);
+
                 self.reg_pc += 1;
                 self.cycle = 2;
             }
             _ => {
-                trace!(
-                    "{:08}\t{:02}\t0x{:04x} - {:?}",
-                    self.count,
-                    self.cycle,
-                    self.reg_pc,
-                    self.inst
-                );
+                //trace!(
+                //    "{:08}\t{:02}\t0x{:04x} - {:?}",
+                //    self.count,
+                //    self.cycle,
+                //    self.reg_pc,
+                //    self.inst
+                //);
                 match self.inst {
                     Clc => self.ex_clc(),
                     Cld => self.ex_cld(),
@@ -604,7 +557,9 @@ impl Cpu6502 {
                     Bvc => self.ex_bvc(),
                     Bvs => self.ex_bvs(),
 
-                    _ => (),
+                    _ => {
+                        panic!("Unknown instruction: {:?}", self.inst);
+                    }
                 }
             }
         }
@@ -649,7 +604,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & C) == 0 {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -661,7 +616,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & C) == C {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -673,7 +628,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & Z) == Z {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -685,7 +640,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & N) == N {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -697,7 +652,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & Z) == 0 {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -721,7 +676,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & V) == 0 {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -733,7 +688,7 @@ impl Cpu6502 {
 
         if self.cycle == 1 {
             if (self.reg_p & V) == V {
-                self.reg_pc += self.value as u16;
+                self.reg_pc = self.addr;
             }
         }
     }
@@ -797,12 +752,11 @@ impl Cpu6502 {
         match self.cycle {
             2 => {
                 self.value = self.mm.read_u8(pc);
-                self.addr = 
-                    if (0x80 & self.value) == 0x80 {
-                        self.reg_pc - 3 - (!self.value) as u16 
-                    } else {
-                        self.reg_pc - 1 + self.value as u16
-                    };
+                self.addr = if (0x80 & self.value) == 0x80 {
+                    self.reg_pc - 3 - (!self.value) as u16
+                } else {
+                    self.reg_pc - 1 + self.value as u16
+                };
                 self.reg_pc += 1;
                 self.cycle = 1;
             }
@@ -1330,6 +1284,7 @@ impl std::fmt::Display for Cpu6502 {
             "A: {:02x}\nX: {:02x} Y: {:02x}\n",
             self.reg_a, self.reg_x, self.reg_y
         )?;
+        write!(f, "STACK: {:02x}\n", self.reg_s)?;
         write!(f, "PC:   {:04x}\nSTATUS: {:02x}\n", self.reg_pc, self.reg_p)?;
         write!(f, "================================================")?;
         Ok(())
