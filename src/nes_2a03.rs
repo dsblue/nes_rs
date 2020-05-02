@@ -17,16 +17,6 @@ const I: u8 = 0b0000_0100; // Interrupt Disable
 const Z: u8 = 0b0000_0010; // Zero
 const C: u8 = 0b0000_0001; // Carry
 
-macro_rules! stat_c {
-    ($p:expr, $reg1:expr, $reg2:expr) => {
-        if $reg1 >= $reg2 {
-            $p |= C;
-        } else {
-            $p &= C;
-        }
-    };
-}
-
 // TODO: This can surely be simplified...
 macro_rules! stat_v {
     ($p:expr, $reg1:expr, $reg2:expr) => {
@@ -120,7 +110,7 @@ enum Instruction {
     Inx,
     Iny,
     Jmp(AddressMode),
-    Jsr(AddressMode),
+    Jsr,
     Lda(AddressMode),
     Ldx(AddressMode),
     Ldy(AddressMode),
@@ -280,7 +270,7 @@ impl Cpu6502 {
             0x1d => Ora(Abx),
             0x1e => Asl(Abx),
             0x1f => Slo(Abx),
-            0x20 => Jsr(Abs),
+            0x20 => Jsr,
             0x21 => And(Izx),
             0x22 => Kil,
             0x23 => Rla(Izx),
@@ -584,6 +574,8 @@ impl Cpu6502 {
                     Adc(m) => self.ex_adc(m),
                     Sbc(m) => self.ex_sbc(m),
                     Cmp(m) => self.ex_cmp(m),
+                    Cpx(m) => self.ex_cpx(m),
+                    Cpy(m) => self.ex_cpy(m),
                     Bit(m) => self.ex_bit(m),
                     Lax(m) => self.ex_lax(m),
                     Nop(m) => self.ex_nop(m),
@@ -596,6 +588,8 @@ impl Cpu6502 {
                     Bpl => self.ex_bpl(),
                     Bvc => self.ex_bvc(),
                     Bvs => self.ex_bvs(),
+
+                    Jsr => self.ex_jsr(),
 
                     _ => {
                         panic!("Unknown instruction: {:?}", self.inst);
@@ -1213,6 +1207,40 @@ impl Cpu6502 {
         }
     }
 
+    fn ex_jsr(&mut self) {
+        let pc = self.reg_pc as usize;
+        let addr_prev = self.addr_prev as usize;
+        let s = self.reg_s as usize;
+
+        match self.cycle {
+            2 => {
+                self.addr_prev = self.reg_pc;
+                self.addr = self.mm.read_u8(pc) as u16;
+                self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle += 1;
+            }
+            3 => {
+                self.cycle += 1;
+            }
+            4 => {
+                self.mm.write_u8(s, (addr_prev & 0xff) as u8);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle += 1;
+            }
+            5 => {
+                self.mm.write_u8(s, (addr_prev >> 8 & 0xff) as u8);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle += 1;
+            }
+            6 => {
+                self.addr |= (self.mm.read_u8(pc) as u16) << 8;
+                self.reg_pc = self.addr;
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
     // DEC Decrement memory
     fn ex_dec(&mut self, m: AddressMode) {
         self.handle_read_modify_write(m);
@@ -1441,11 +1469,38 @@ impl Cpu6502 {
         self.handle_read(m);
 
         if self.cycle == 1 {
-            self.reg_a = self.value | self.reg_a;
-            let t = self.reg_a.wrapping_sub(self.value);
+            let t = (self.reg_a as u16).wrapping_sub(self.value as u16);
 
             // Update C flag
-            stat_c!(self.reg_p, self.reg_a, self.value);
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    fn ex_cpx(&mut self, m: AddressMode) {
+        self.handle_read(m);
+
+        if self.cycle == 1 {
+            let t = (self.reg_x as u16).wrapping_sub(self.value as u16);
+
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    fn ex_cpy(&mut self, m: AddressMode) {
+        self.handle_read(m);
+
+        if self.cycle == 1 {
+            let t = (self.reg_y as u16).wrapping_sub(self.value as u16);
+
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
 
             // Update N and Z flags
             stat_nz!(self.reg_p, t);
