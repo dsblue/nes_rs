@@ -17,6 +17,48 @@ const I: u8 = 0b0000_0100; // Interrupt Disable
 const Z: u8 = 0b0000_0010; // Zero
 const C: u8 = 0b0000_0001; // Carry
 
+macro_rules! stat_c {
+    ($p:expr, $reg1:expr, $reg2:expr) => {
+        if $reg1 >= $reg2 {
+            $p |= C;
+        } else {
+            $p &= C;
+        }
+    };
+}
+
+// TODO: This can surely be simplified...
+macro_rules! stat_v {
+    ($p:expr, $reg1:expr, $reg2:expr) => {
+        if ($reg1 & 0x80) == 0x80 && ($reg2 & 0x80) == 0x80 {
+            if $reg1.wrapping_add($reg2) & 0x80 == 0 {
+                $p |= V;
+            } else {
+                $p &= !V;
+            }
+        } else if ($reg1 & 0x80) == 0 && ($reg2 & 0x80) == 0 {
+            if $reg1.wrapping_add($reg2) & 0x80 == 0x80 {
+                $p |= V;
+            } else {
+                $p &= !V;
+            }
+        } else {
+            $p &= !V;
+        }
+    };
+}
+
+// Usage: update_status!(reg_p, (reg == 0), Z);
+macro_rules! update_status {
+    ($p:expr, $is_set:expr, $flags:expr) => {
+        if ($is_set) {
+            $p |= ($flags);
+        } else {
+            $p &= !($flags);
+        }
+    };
+}
+
 macro_rules! stat_nz {
     ($p:expr, $reg:expr) => {
         if $reg == 0 {
@@ -158,7 +200,9 @@ pub struct Cpu6502 {
     mm: MemoryMap,
 
     inst: Instruction,
+
     addr: u16,
+    addr_prev: u16,
     ptr: u8,
     value: u8,
     cycle: u8,
@@ -178,7 +222,9 @@ impl Cpu6502 {
             mm: mm,
 
             inst: Instruction::Brk,
+
             addr: 0,
+            addr_prev: 0,
             ptr: 0,
             value: 0,
             cycle: 1,
@@ -561,25 +607,33 @@ impl Cpu6502 {
         self.count += 1;
     }
 
+    // Handle branch instructions that use relative addressing
     fn handle_branch(&mut self) {
-        let pc = self.reg_pc as usize;
-
-        error!("Not cycle accurate yet");
-
         match self.cycle {
             2 => {
-                self.value = self.mm.read_u8(pc);
-                self.addr = if (0x80 & self.value) == 0x80 {
-                    self.reg_pc - 3 - (!self.value) as u16
-                } else {
-                    self.reg_pc - 1 + self.value as u16
-                };
+                // Fetch operand, increment PC
+                self.addr_prev = self.reg_pc.wrapping_sub(1); // Save the current PC
+                self.value = self.mm.read_u8(self.reg_pc as usize);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle += 1;
+            }
+            3 => {
+                let value = ((self.value as i8) as i16) as u16;
+                self.addr = self.addr_prev.wrapping_add(value);
+                self.cycle += 1;
+            }
+            4 => {
+                // If branch is taken, this cycle executes
+                if (self.addr_prev & 0xff00) == (self.addr & 0xff00) {
+                    self.cycle = 1;
+                } else {
+                    self.cycle += 1;
+                }
+            }
+            5 => {
+                // If branch crosses pages, this cycle executes
                 self.cycle = 1;
             }
-            3 => {}
-            4 => {}
-            5 => {}
             _ => (),
         }
     }
@@ -1066,11 +1120,11 @@ impl Cpu6502 {
     fn ex_bcc(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & C) == 0 {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1078,11 +1132,11 @@ impl Cpu6502 {
     fn ex_bcs(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & C) == C {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1090,11 +1144,11 @@ impl Cpu6502 {
     fn ex_beq(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & Z) == Z {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1102,11 +1156,11 @@ impl Cpu6502 {
     fn ex_bmi(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & N) == N {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1114,11 +1168,11 @@ impl Cpu6502 {
     fn ex_bne(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & Z) == 0 {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1126,11 +1180,11 @@ impl Cpu6502 {
     fn ex_bpl(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & N) == 0 {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1138,11 +1192,11 @@ impl Cpu6502 {
     fn ex_bvc(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
-            if (self.reg_p & V) == 0 {
+        if self.cycle == 4 {
+            if (self.reg_p & Z) == 0 {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1150,11 +1204,11 @@ impl Cpu6502 {
     fn ex_bvs(&mut self) {
         self.handle_branch();
 
-        error!("Inclomplete");
-
-        if self.cycle == 1 {
+        if self.cycle == 4 {
             if (self.reg_p & V) == V {
                 self.reg_pc = self.addr;
+            } else {
+                self.cycle = 1;
             }
         }
     }
@@ -1348,44 +1402,78 @@ impl Cpu6502 {
     fn ex_adc(&mut self, m: AddressMode) {
         self.handle_read(m);
 
-        //if self.cycle == 1 {
-        //    self.reg_a = self.reg_a + self.value + (self.reg_p & C == C) as u8;
-        //}
+        if self.cycle == 1 {
+            let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
 
-        // Update N and Z flags
-        //stat_nz!(self.reg_p, self.reg_y);
+            self.reg_a = (t & 0xff) as u8;
 
-        error!("Incomplete");
-        //
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update V flag
+            stat_v!(self.reg_p, self.reg_a, self.value);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
     }
 
     fn ex_sbc(&mut self, m: AddressMode) {
         self.handle_read(m);
 
-        error!("Incomplete");
+        if self.cycle == 1 {
+            let t = self.reg_a as u16 - self.value as u16 - 1 + (self.reg_p & C == C) as u16;
+
+            self.reg_a = (t & 0xff) as u8;
+
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update V flag
+            stat_v!(self.reg_p, self.reg_a, self.value);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
     }
 
     fn ex_cmp(&mut self, m: AddressMode) {
         self.handle_read(m);
 
-        error!("Incomplete");
+        if self.cycle == 1 {
+            self.reg_a = self.value | self.reg_a;
+            let t = self.reg_a.wrapping_sub(self.value);
+
+            // Update C flag
+            stat_c!(self.reg_p, self.reg_a, self.value);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
     }
 
     fn ex_bit(&mut self, m: AddressMode) {
         self.handle_read(m);
 
-        error!("Incomplete");
+        if self.cycle == 1 {
+            let t = self.value & self.reg_a;
+
+            update_status!(self.reg_p, (t == 0), Z);
+
+            update_status!(self.reg_p, (t & 0x40) == 0x00, V);
+
+            update_status!(self.reg_p, (t & 0x80) == 0x00, N);
+        }
+    }
+
+    fn ex_nop(&mut self, m: AddressMode) {
+        self.handle_read(m);
     }
 
     fn ex_lax(&mut self, m: AddressMode) {
         self.handle_read(m);
 
-        error!("Incomplete");
-    }
-
-    fn ex_nop(&mut self, m: AddressMode) {
-        self.handle_read(m);
-
+        info!("Unusual instrction {:?}", self.inst);
         error!("Incomplete");
     }
 
@@ -1396,7 +1484,7 @@ impl Cpu6502 {
         self.handle_write(m);
     }
 
-    // SHX Store X & (ADDR_HI + 1)to memory
+    // SHX Store X & (ADDR_HI + 1) to memory
     fn ex_shx(&mut self, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
         self.value = self.reg_x & ((self.addr >> 8) as u8).wrapping_add(1);

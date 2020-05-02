@@ -45,6 +45,6 @@ fn main() {
 
     for _ in 1..200 {
         cpu.tick();
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(1));
     }
 }
