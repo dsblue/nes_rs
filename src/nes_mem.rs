@@ -242,7 +242,8 @@ impl MemoryMap {
 }
 
 fn ppu_read_u8(addr: usize) -> u8 {
-    match addr {
+
+    let value = match addr {
         0x00 => 0,
         0x01 => 0,
         0x02 => 0xff,
@@ -253,5 +254,9 @@ fn ppu_read_u8(addr: usize) -> u8 {
         0x07 => 0,
         0x14 => 0,
         _ => 0,
-    }
+    };
+
+    trace!("PPU Read 0x{:04x}: 0x{:02x}", addr, value);
+
+    value
 }

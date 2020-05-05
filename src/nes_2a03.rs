@@ -17,6 +17,17 @@ const I: u8 = 0b0000_0100; // Interrupt Disable
 const Z: u8 = 0b0000_0010; // Zero
 const C: u8 = 0b0000_0001; // Carry
 
+// Usage: update_status!(reg_p, (reg == 0), Z);
+macro_rules! update_status {
+    ($p:expr, $is_set:expr, $flags:expr) => {
+        if ($is_set) {
+            $p |= ($flags);
+        } else {
+            $p &= !($flags);
+        }
+    };
+}
+
 // TODO: This can surely be simplified...
 macro_rules! stat_v {
     ($p:expr, $reg1:expr, $reg2:expr) => {
@@ -34,17 +45,6 @@ macro_rules! stat_v {
             }
         } else {
             $p &= !V;
-        }
-    };
-}
-
-// Usage: update_status!(reg_p, (reg == 0), Z);
-macro_rules! update_status {
-    ($p:expr, $is_set:expr, $flags:expr) => {
-        if ($is_set) {
-            $p |= ($flags);
-        } else {
-            $p &= !($flags);
         }
     };
 }
@@ -78,6 +78,26 @@ enum AddressMode {
     Abx,
     Aby,
     Ind,
+}
+
+impl AddressMode {
+    fn display(&self, o: u16) -> String {
+        use AddressMode::*;
+
+        match *self {
+            Imp => format!(""),
+            Imm => format!("#${:02x}", o as u8),
+            Zp => format!("${:02x}", o as u8),
+            Zpx => format!("${:02x},X", o as u8),
+            Zpy => format!("${:02x},Y", o as u8),
+            Abs => format!("${:04x}", o as u16),
+            Abx => format!("${:04x},X", o as u16),
+            Aby => format!("${:04x},Y", o as u16),
+            Ind => format!("(${:02x})", o as u8),
+            Izx => format!("(${:02x},X)", o as u8),
+            Izy => format!("(${:02x}),Y", o as u8),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -165,14 +185,69 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn _info(&self) -> (&str, &str) {
+    fn info(&self, o: u16) -> (&str, String) {
+        use AddressMode::*;
         use Instruction::*;
 
         match *self {
-            Nop(_) => ("nop", "No operation"),
-            Clc => ("clc", "Clear Carry"),
-            Lda(_) => ("lda", "Load Accumulator"),
-            _ => ("--", "--"),
+            Adc(m) => ("adc", m.display(o)),
+            And(m) => ("and", m.display(o)),
+            Asl(m) => ("asl", m.display(o)),
+            Bcc => ("bcc", Imm.display(o)),
+            Bcs => ("bcs", Imm.display(o)),
+            Beq => ("beq", Imm.display(o)),
+            Bit(m) => ("bit", m.display(o)),
+            Bmi => ("bmi", Imm.display(o)),
+            Bne => ("bne", Imm.display(o)),
+            Bpl => ("bpl", Imm.display(o)),
+            Brk => ("brk", "".to_string()),
+            Bvc => ("bvc", Imm.display(o)),
+            Bvs => ("bvs", Imm.display(o)),
+            Clc => ("clc", "".to_string()),
+            Cld => ("cld", "".to_string()),
+            Cli => ("cli", "".to_string()),
+            Clv => ("clv", "".to_string()),
+            Cmp(m) => ("cmp", m.display(o)),
+            Cpx(m) => ("cpx", m.display(o)),
+            Cpy(m) => ("cpy", m.display(o)),
+            Dec(m) => ("dec", m.display(o)),
+            Dex => ("dex", "".to_string()),
+            Dey => ("dey", "".to_string()),
+            Eor(m) => ("eor", m.display(o)),
+            Inc(m) => ("inc", m.display(o)),
+            Inx => ("inx", "".to_string()),
+            Iny => ("iny", "".to_string()),
+            Jmp(_m) => ("jmp", Imm.display(o)),
+            Jsr => ("jsr", Imm.display(o)),
+            Lda(m) => ("lda", m.display(o)),
+            Ldx(m) => ("ldx", m.display(o)),
+            Ldy(m) => ("ldy", m.display(o)),
+            Lsr(m) => ("lsr", m.display(o)),
+            Nop(m) => ("nop", m.display(o)),
+            Ora(m) => ("ora", m.display(o)),
+            Pha => ("pha", "".to_string()),
+            Php => ("php", "".to_string()),
+            Pla => ("pla", "".to_string()),
+            Plp => ("plp", "".to_string()),
+            Rol(m) => ("rol", m.display(o)),
+            Ror(m) => ("ror", m.display(o)),
+            Rti => ("rti", "".to_string()),
+            Rts => ("rts", "".to_string()),
+            Sbc(m) => ("sbc", m.display(o)),
+            Sec => ("sec", "".to_string()),
+            Sed => ("sed", "".to_string()),
+            Sei => ("sei", "".to_string()),
+            Sta(m) => ("sta", m.display(o)),
+            Stx(m) => ("stx", m.display(o)),
+            Sty(m) => ("sty", m.display(o)),
+            Tax => ("tax", "".to_string()),
+            Tay => ("tay", "".to_string()),
+            Tsx => ("tsx", "".to_string()),
+            Txa => ("txa", "".to_string()),
+            Txs => ("txs", "".to_string()),
+            Tya => ("tya", "".to_string()),
+
+            _ => ("--", "--".to_string()),
         }
     }
 }
@@ -506,96 +581,99 @@ impl Cpu6502 {
                 let op = self.mm.read_u8(self.reg_pc as usize);
                 self.inst = self.decode_op(op);
 
-                let oper1 = self.mm.read_u8(self.reg_pc as usize + 1);
-                let oper2 = self.mm.read_u8(self.reg_pc as usize + 2);
-
-                trace!(
-                    "{:08}\t{:02}\t0x{:04x} - {:?} {:02X} {:02X}",
-                    self.count,
-                    self.cycle,
-                    self.reg_pc,
-                    self.inst,
-                    oper1,
-                    oper2
-                );
+                let operand = self.mm.read_u16(self.reg_pc as usize + 1);
 
                 //println!("{}", self);
+
+                let (name, operand) = self.inst.info(operand);
+
+                println!(
+                    "{:04x}: {} {:<8}\tA:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => [{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}]",
+                    self.reg_pc,
+                    name.to_ascii_uppercase(),
+                    operand,
+                    self.reg_a,
+                    self.reg_x,
+                    self.reg_y,
+                    self.reg_s as u16 + 0x0100,
+                    self.mm.read_u8(self.reg_s as usize + 0x101),
+                    self.mm.read_u8(self.reg_s as usize + 0x102),
+                    self.mm.read_u8(self.reg_s as usize + 0x103),
+                    self.mm.read_u8(self.reg_s as usize + 0x104),
+                    self.mm.read_u8(self.reg_s as usize + 0x105),
+                    self.mm.read_u8(self.reg_s as usize + 0x106),
+                    self.mm.read_u8(self.reg_s as usize + 0x107),
+                    self.mm.read_u8(self.reg_s as usize + 0x108),
+                );
+
+                assert!(0x90e6 != self.reg_pc);
 
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
-            _ => {
-                //trace!(
-                //    "{:08}\t{:02}\t0x{:04x} - {:?}",
-                //    self.count,
-                //    self.cycle,
-                //    self.reg_pc,
-                //    self.inst
-                //);
-                match self.inst {
-                    Clc => self.ex_clc(),
-                    Cld => self.ex_cld(),
-                    Cli => self.ex_cli(),
+            _ => match self.inst {
+                Clc => self.ex_clc(),
+                Cld => self.ex_cld(),
+                Cli => self.ex_cli(),
 
-                    Sec => self.ex_sec(),
-                    Sed => self.ex_sed(),
-                    Sei => self.ex_sei(),
+                Sec => self.ex_sec(),
+                Sed => self.ex_sed(),
+                Sei => self.ex_sei(),
 
-                    Ahx(m) => self.ex_ahx(m),
-                    Shx(m) => self.ex_shx(m),
-                    Shy(m) => self.ex_shy(m),
-                    Sax(m) => self.ex_sax(m),
+                Ahx(m) => self.ex_ahx(m),
+                Shx(m) => self.ex_shx(m),
+                Shy(m) => self.ex_shy(m),
+                Sax(m) => self.ex_sax(m),
 
-                    Sta(m) => self.ex_sta(m),
-                    Stx(m) => self.ex_stx(m),
-                    Sty(m) => self.ex_sty(m),
+                Sta(m) => self.ex_sta(m),
+                Stx(m) => self.ex_stx(m),
+                Sty(m) => self.ex_sty(m),
 
-                    Lda(m) => self.ex_lda(m),
-                    Ldx(m) => self.ex_ldx(m),
-                    Ldy(m) => self.ex_ldy(m),
+                Lda(m) => self.ex_lda(m),
+                Ldx(m) => self.ex_ldx(m),
+                Ldy(m) => self.ex_ldy(m),
 
-                    Tax => self.ex_tax(),
-                    Tay => self.ex_tay(),
-                    Tsx => self.ex_tsx(),
-                    Txa => self.ex_txa(),
-                    Txs => self.ex_txs(),
-                    Tya => self.ex_tya(),
+                Tax => self.ex_tax(),
+                Tay => self.ex_tay(),
+                Tsx => self.ex_tsx(),
+                Txa => self.ex_txa(),
+                Txs => self.ex_txs(),
+                Tya => self.ex_tya(),
 
-                    Dec(m) => self.ex_dec(m),
-                    Dex => self.ex_dex(),
-                    Dey => self.ex_dey(),
-                    Inc(m) => self.ex_inc(m),
-                    Inx => self.ex_inx(),
-                    Iny => self.ex_iny(),
+                Dec(m) => self.ex_dec(m),
+                Dex => self.ex_dex(),
+                Dey => self.ex_dey(),
+                Inc(m) => self.ex_inc(m),
+                Inx => self.ex_inx(),
+                Iny => self.ex_iny(),
 
-                    Eor(m) => self.ex_eor(m),
-                    Ora(m) => self.ex_ora(m),
-                    And(m) => self.ex_and(m),
-                    Adc(m) => self.ex_adc(m),
-                    Sbc(m) => self.ex_sbc(m),
-                    Cmp(m) => self.ex_cmp(m),
-                    Cpx(m) => self.ex_cpx(m),
-                    Cpy(m) => self.ex_cpy(m),
-                    Bit(m) => self.ex_bit(m),
-                    Lax(m) => self.ex_lax(m),
-                    Nop(m) => self.ex_nop(m),
+                Eor(m) => self.ex_eor(m),
+                Ora(m) => self.ex_ora(m),
+                And(m) => self.ex_and(m),
+                Adc(m) => self.ex_adc(m),
+                Sbc(m) => self.ex_sbc(m),
+                Cmp(m) => self.ex_cmp(m),
+                Cpx(m) => self.ex_cpx(m),
+                Cpy(m) => self.ex_cpy(m),
+                Bit(m) => self.ex_bit(m),
+                Lax(m) => self.ex_lax(m),
+                Nop(m) => self.ex_nop(m),
 
-                    Bcc => self.ex_bcc(),
-                    Bcs => self.ex_bcs(),
-                    Beq => self.ex_beq(),
-                    Bmi => self.ex_bmi(),
-                    Bne => self.ex_bne(),
-                    Bpl => self.ex_bpl(),
-                    Bvc => self.ex_bvc(),
-                    Bvs => self.ex_bvs(),
+                Bcc => self.ex_bcc(),
+                Bcs => self.ex_bcs(),
+                Beq => self.ex_beq(),
+                Bmi => self.ex_bmi(),
+                Bne => self.ex_bne(),
+                Bpl => self.ex_bpl(),
+                Bvc => self.ex_bvc(),
+                Bvs => self.ex_bvs(),
 
-                    Jsr => self.ex_jsr(),
+                Jsr => self.ex_jsr(),
 
-                    _ => {
-                        panic!("Unknown instruction: {:?}", self.inst);
-                    }
+                _ => {
+                    panic!("Unknown instruction: {:?}", self.inst);
                 }
-            }
+            },
         }
 
         self.count += 1;
@@ -613,7 +691,7 @@ impl Cpu6502 {
             }
             3 => {
                 let value = ((self.value as i8) as i16) as u16;
-                self.addr = self.addr_prev.wrapping_add(value);
+                self.addr = self.reg_pc.wrapping_add(value);
                 self.cycle += 1;
             }
             4 => {
@@ -989,7 +1067,6 @@ impl Cpu6502 {
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -1014,7 +1091,6 @@ impl Cpu6502 {
                 }
                 3 => {
                     self.ptr = self.mm.read_u8(ptr);
-                    self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
@@ -1207,28 +1283,29 @@ impl Cpu6502 {
         }
     }
 
+    // JSR Jump to subroutine
     fn ex_jsr(&mut self) {
         let pc = self.reg_pc as usize;
         let addr_prev = self.addr_prev as usize;
-        let s = self.reg_s as usize;
+        let s = self.reg_s as usize + 0x100;
 
         match self.cycle {
             2 => {
-                self.addr_prev = self.reg_pc;
                 self.addr = self.mm.read_u8(pc) as u16;
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
             3 => {
+                self.addr_prev = self.reg_pc;
                 self.cycle += 1;
             }
             4 => {
-                self.mm.write_u8(s, (addr_prev & 0xff) as u8);
+                self.mm.write_u8(s, (addr_prev >> 8 & 0xff) as u8);
                 self.reg_s = self.reg_s.wrapping_sub(1);
                 self.cycle += 1;
             }
             5 => {
-                self.mm.write_u8(s, (addr_prev >> 8 & 0xff) as u8);
+                self.mm.write_u8(s, (addr_prev & 0xff) as u8);
                 self.reg_s = self.reg_s.wrapping_sub(1);
                 self.cycle += 1;
             }
@@ -1363,6 +1440,8 @@ impl Cpu6502 {
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
+
+            trace!("LDA {:04x} -> A ({:02x})", self.addr, self.value);
         }
     }
 
@@ -1469,13 +1548,11 @@ impl Cpu6502 {
         self.handle_read(m);
 
         if self.cycle == 1 {
-            let t = (self.reg_a as u16).wrapping_sub(self.value as u16);
-
             // Update C flag
-            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+            update_status!(self.reg_p, self.reg_a >= self.value, C);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, t);
+            stat_nz!(self.reg_p, self.reg_a.wrapping_sub(self.value));
         }
     }
 
@@ -1483,13 +1560,11 @@ impl Cpu6502 {
         self.handle_read(m);
 
         if self.cycle == 1 {
-            let t = (self.reg_x as u16).wrapping_sub(self.value as u16);
-
             // Update C flag
-            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+            update_status!(self.reg_p, self.reg_x >= self.value, C);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, t);
+            stat_nz!(self.reg_p, self.reg_x.wrapping_sub(self.value));
         }
     }
 
@@ -1497,13 +1572,11 @@ impl Cpu6502 {
         self.handle_read(m);
 
         if self.cycle == 1 {
-            let t = (self.reg_y as u16).wrapping_sub(self.value as u16);
-
             // Update C flag
-            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+            update_status!(self.reg_p, self.reg_y >= self.value, C);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, t);
+            stat_nz!(self.reg_p, self.reg_y.wrapping_sub(self.value));
         }
     }
 
@@ -1588,7 +1661,7 @@ impl std::fmt::Display for Cpu6502 {
             "A: {:02x}\nX: {:02x} Y: {:02x}\n",
             self.reg_a, self.reg_x, self.reg_y
         )?;
-        write!(f, "STACK: {:02x}\n", self.reg_s)?;
+        write!(f, "STACK: {:04x}\n", self.reg_s as u16 + 0x100)?;
         write!(f, "PC:   {:04x}\nSTATUS: {:02x}\n", self.reg_pc, self.reg_p)?;
         write!(f, "================================================")?;
         Ok(())
