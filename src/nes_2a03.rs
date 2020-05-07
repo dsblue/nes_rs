@@ -572,6 +572,32 @@ impl Cpu6502 {
         }
     }
 
+    fn stack_as_string(&self) -> String {
+        format!(
+            "[{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}]",
+            self.mm.read_u8(self.reg_s as usize + 0x101),
+            self.mm.read_u8(self.reg_s as usize + 0x102),
+            self.mm.read_u8(self.reg_s as usize + 0x103),
+            self.mm.read_u8(self.reg_s as usize + 0x104),
+            self.mm.read_u8(self.reg_s as usize + 0x105),
+            self.mm.read_u8(self.reg_s as usize + 0x106),
+            self.mm.read_u8(self.reg_s as usize + 0x107),
+            self.mm.read_u8(self.reg_s as usize + 0x108),
+        )
+    }
+
+    fn status_as_string(&self) -> String {
+        format!(
+            "[{}{}..{}{}{}{}]",
+            if self.reg_p & N == N { "N" } else { "n" },
+            if self.reg_p & V == V { "V" } else { "v" },
+            if self.reg_p & D == D { "D" } else { "d" },
+            if self.reg_p & I == I { "I" } else { "i" },
+            if self.reg_p & Z == Z { "Z" } else { "z" },
+            if self.reg_p & C == C { "C" } else { "c" },
+        )
+    }
+
     pub fn tick(&mut self) {
         use Instruction::*;
 
@@ -581,32 +607,21 @@ impl Cpu6502 {
                 let op = self.mm.read_u8(self.reg_pc as usize);
                 self.inst = self.decode_op(op);
 
-                let operand = self.mm.read_u16(self.reg_pc as usize + 1);
-
-                //println!("{}", self);
-
-                let (name, operand) = self.inst.info(operand);
+                // Disassembly info for debug
+                let (name, operand) = self.inst.info(self.mm.read_u16(self.reg_pc as usize + 1));
 
                 println!(
-                    "{:04x}: {} {:<8}\tA:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => [{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}]",
+                    "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
                     self.reg_pc,
                     name.to_ascii_uppercase(),
                     operand,
+                    self.status_as_string(),
                     self.reg_a,
                     self.reg_x,
                     self.reg_y,
                     self.reg_s as u16 + 0x0100,
-                    self.mm.read_u8(self.reg_s as usize + 0x101),
-                    self.mm.read_u8(self.reg_s as usize + 0x102),
-                    self.mm.read_u8(self.reg_s as usize + 0x103),
-                    self.mm.read_u8(self.reg_s as usize + 0x104),
-                    self.mm.read_u8(self.reg_s as usize + 0x105),
-                    self.mm.read_u8(self.reg_s as usize + 0x106),
-                    self.mm.read_u8(self.reg_s as usize + 0x107),
-                    self.mm.read_u8(self.reg_s as usize + 0x108),
+                    self.stack_as_string(),
                 );
-
-                assert!(0x90e6 != self.reg_pc);
 
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
@@ -668,7 +683,9 @@ impl Cpu6502 {
                 Bvc => self.ex_bvc(),
                 Bvs => self.ex_bvs(),
 
+                Jmp(m) => self.ex_jmp(m),
                 Jsr => self.ex_jsr(),
+                Rts => self.ex_rts(),
 
                 _ => {
                     panic!("Unknown instruction: {:?}", self.inst);
@@ -1283,6 +1300,35 @@ impl Cpu6502 {
         }
     }
 
+    // RTS Return from subroutine
+    fn ex_rts(&mut self) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_pc = self.mm.read_u8(s) as u16;
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            5 => {
+                self.reg_pc |= (self.mm.read_u8(s) as u16) << 8;
+                self.cycle += 1;
+            }
+            6 => {
+                self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
     // JSR Jump to subroutine
     fn ex_jsr(&mut self) {
         let pc = self.reg_pc as usize;
@@ -1315,6 +1361,51 @@ impl Cpu6502 {
                 self.cycle = 1;
             }
             _ => (),
+        }
+    }
+
+    // JMP Jump to address
+    fn ex_jmp(&mut self, m: AddressMode) {
+        let pc = self.reg_pc as usize;
+        let ptr = self.ptr as usize;
+        let addr = self.addr as usize;
+
+        match m {
+            AddressMode::Abs => match self.cycle {
+                2 => {
+                    self.addr = self.mm.read_u8(pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.reg_pc = ((self.mm.read_u8(pc) as u16) << 8) | self.addr;
+                    self.cycle = 1;
+                }
+                _ => (),
+            },
+            AddressMode::Ind => match self.cycle {
+                2 => {
+                    self.ptr = self.mm.read_u8(pc);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.addr = (self.mm.read_u8(pc) as u16) << 8;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.reg_pc = self.mm.read_u8(addr | ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.reg_pc |= (self.mm.read_u8(addr | ptr) as u16) << 8;
+                    self.cycle = 1;
+                }
+                _ => (),
+            },
+            _ => panic!("Invalid mode: {:?}", m),
         }
     }
 
@@ -1440,8 +1531,6 @@ impl Cpu6502 {
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
-
-            trace!("LDA {:04x} -> A ({:02x})", self.addr, self.value);
         }
     }
 
