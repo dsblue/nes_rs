@@ -266,6 +266,9 @@ pub struct Cpu6502 {
 
     inst: Instruction,
 
+    nmi_pending: bool,
+    irq_pending: bool,
+
     addr: u16,
     addr_prev: u16,
     ptr: u8,
@@ -288,6 +291,9 @@ impl Cpu6502 {
 
             inst: Instruction::Brk,
 
+            nmi_pending: false,
+            irq_pending: false,
+
             addr: 0,
             addr_prev: 0,
             ptr: 0,
@@ -306,6 +312,18 @@ impl Cpu6502 {
 
         // Load the reset vector
         self.reg_pc = self.mm.read_u16(0xfffc);
+    }
+
+    pub fn _irq(&mut self) {
+        info!("IRQ");
+        if (self.reg_p & I) == 0 {
+            self.irq_pending = true;
+        }
+    }
+
+    pub fn nmi(&mut self) {
+        info!("NMI");
+        self.nmi_pending = true;
     }
 
     fn decode_op(&mut self, op: u8) -> Instruction {
@@ -601,8 +619,23 @@ impl Cpu6502 {
     pub fn tick(&mut self) {
         use Instruction::*;
 
+        if self.count == 90000 {
+            self.nmi();
+        }
+
         match self.cycle {
             1 => {
+                // Check for interrupts
+                if self.irq_pending {
+                    self.irq_pending = false;
+                    self.reg_pc = self.mm.read_u16(0xfffe);
+                }
+
+                if self.nmi_pending {
+                    self.nmi_pending = false;
+                    self.reg_pc = self.mm.read_u16(0xfffa);
+                }
+
                 // Fetch decode
                 let op = self.mm.read_u8(self.reg_pc as usize);
                 self.inst = self.decode_op(op);
@@ -611,7 +644,8 @@ impl Cpu6502 {
                 let (name, operand) = self.inst.info(self.mm.read_u16(self.reg_pc as usize + 1));
 
                 println!(
-                    "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
+                    "{:>8}  {:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
+                    self.count,
                     self.reg_pc,
                     name.to_ascii_uppercase(),
                     operand,
@@ -674,6 +708,8 @@ impl Cpu6502 {
                 Lax(m) => self.ex_lax(m),
                 Nop(m) => self.ex_nop(m),
 
+                Lsr(m) => self.ex_lsr(m),
+
                 Bcc => self.ex_bcc(),
                 Bcs => self.ex_bcs(),
                 Beq => self.ex_beq(),
@@ -732,6 +768,10 @@ impl Cpu6502 {
         let addr = self.addr as usize;
 
         match m {
+            AddressMode::Imp => {
+                self.value = self.reg_a;
+                self.cycle = 1;
+            }
             AddressMode::Zp => match self.cycle {
                 2 => {
                     self.addr = self.mm.read_u8(pc) as u16;
@@ -831,7 +871,7 @@ impl Cpu6502 {
 
         match m {
             AddressMode::Imp => {
-                self.mm.read_u8(pc);
+                self.value = self.mm.read_u8(pc);
                 self.cycle = 1;
             }
             AddressMode::Imm => {
@@ -1414,11 +1454,12 @@ impl Cpu6502 {
         self.handle_read_modify_write(m);
 
         if self.cycle == 1 {
-            self.mm
-                .write_u8(self.addr as usize, self.value.wrapping_sub(1));
+            let t = self.value.wrapping_sub(1);
+
+            self.mm.write_u8(self.addr as usize, t);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
+            stat_nz!(self.reg_p, t);
         }
     }
 
@@ -1445,11 +1486,33 @@ impl Cpu6502 {
         self.handle_read_modify_write(m);
 
         if self.cycle == 1 {
-            self.mm
-                .write_u8(self.addr as usize, self.value.wrapping_add(1));
+            let t = self.value.wrapping_add(1);
+
+            self.mm.write_u8(self.addr as usize, t);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    // LSR Logical Shift Right
+    fn ex_lsr(&mut self, m: AddressMode) {
+        self.handle_read_modify_write(m);
+
+        if self.cycle == 1 {
+            let t = self.value >> 1;
+
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.mm.write_u8(self.addr as usize, t);
+            }
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 1) == 1, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
         }
     }
 
@@ -1677,9 +1740,9 @@ impl Cpu6502 {
 
             update_status!(self.reg_p, (t == 0), Z);
 
-            update_status!(self.reg_p, (t & 0x40) == 0x00, V);
+            update_status!(self.reg_p, (self.value & 0x40) == 0x40, V);
 
-            update_status!(self.reg_p, (t & 0x80) == 0x00, N);
+            update_status!(self.reg_p, (self.value & 0x80) == 0x80, N);
         }
     }
 
