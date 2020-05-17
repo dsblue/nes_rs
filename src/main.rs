@@ -5,14 +5,20 @@ use std::env;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
+use std::collections::VecDeque;
 
 mod nes_2a03;
+mod nes_ppu;
 mod nes_mem;
 mod nes_rom;
 
 use nes_2a03::Cpu6502;
+use nes_ppu::Ppu2c02;
 use nes_mem::MemoryMap;
 use nes_rom::Rom;
+
+use nes_ppu::Event;
+
 
 fn usage(app: &String) {
     println!("Usage: {} filename", app);
@@ -37,14 +43,39 @@ fn main() {
 
     info!("Loaded ROM file: {}", rom);
 
+    run(rom);
+
+}
+
+fn run(rom: Rom) {
     let mm = MemoryMap::new(&rom);
 
     let mut cpu = Cpu6502::new(mm);
+    let mut ppu = Ppu2c02::new();
 
-    cpu.reset();
+    cpu.power_on_reset();
+    ppu.power_on_reset();
+
+    let mut events: VecDeque<Event> = VecDeque::new();
+
+    events.push_front(Event::Reset);
 
     loop {
-        cpu.tick();
-        thread::sleep(Duration::from_micros(10));
+        
+        cpu.tick(&mut events);
+        ppu.tick(&mut events);
+
+        // Handle any generated events
+        while let Some(e) = events.pop_back() {
+            match e {
+                Event::Reset => {
+                    cpu.reset();
+                    ppu.reset();
+                }
+                Event::Nmi => cpu.nmi(),
+            }
+        }
+
+        thread::sleep(Duration::from_micros(1));
     }
 }

@@ -8,7 +8,10 @@
  *
  * Used Opcode names from: http://www.oxyron.de/html/opcodes02.html
  */
+use std::collections::VecDeque;
+
 use crate::MemoryMap;
+use crate::nes_ppu::Event;
 
 const N: u8 = 0b1000_0000; // Negitive
 const V: u8 = 0b0100_0000; // Overflow
@@ -305,10 +308,23 @@ impl Cpu6502 {
     pub fn reset(&mut self) {
         info!("Reset CPU");
 
+        self.reg_p |= I;
+
+        self.reg_s = self.reg_s.wrapping_sub(3);
+
+        // Load the reset vector
+        self.reg_pc = self.mm.read_u16(0xfffc);
+    }
+
+    pub fn power_on_reset(&mut self) {
+        info!("Power Cycle CPU");
+
         self.reg_a = 0;
         self.reg_x = 0;
         self.reg_y = 0;
-        self.reg_p = 0;
+        self.reg_p = 0x34;
+
+        self.reg_s = 0xfd;
 
         // Load the reset vector
         self.reg_pc = self.mm.read_u16(0xfffc);
@@ -616,12 +632,8 @@ impl Cpu6502 {
         )
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, _e: &mut VecDeque<Event>) {
         use Instruction::*;
-
-        if self.count == 90000 {
-            self.nmi();
-        }
 
         match self.cycle {
             1 => {

@@ -50,6 +50,11 @@ impl RegionType {
     }
 }
 
+pub trait MemoryMapInterface {
+    fn read_u8(&self, address: usize) -> u8;
+    fn write_u8(&self, address: usize, value: u8);
+}
+
 pub struct MemoryMap {
     internal_ram: [u8; 2 * 1024],
 
