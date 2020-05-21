@@ -3,6 +3,7 @@
  */
 
 use std::collections::VecDeque;
+use crate::nes_mem::MemoryMapInterface;
 
 #[derive(Debug)]
 pub enum Event {
@@ -43,6 +44,24 @@ impl Ppu2c02 {
         }
         
         self.count += 1;
+    }
+}
+
+impl MemoryMapInterface for Ppu2c02 {
+    fn read_u8(&self, offset: usize) -> u8 {
+        0
+    }
+
+    fn read_u16(&self, offset: usize) -> u16 {
+        0
+    }
+
+    fn write_u8(&mut self, offset: usize, val: u8) {
+        self.reset();
+    }
+
+    fn write_u16(&mut self, offset: usize, val: u16) {
+        self.reset();
     }
 }
 

@@ -48,10 +48,13 @@ fn main() {
 }
 
 fn run(rom: Rom) {
-    let mm = MemoryMap::new(&rom);
+    let mut mm = MemoryMap::new(&rom);
 
-    let mut cpu = Cpu6502::new(mm);
     let mut ppu = Ppu2c02::new();
+
+    mm.add_region(0x100, 0x200, &mut ppu);
+
+    let mut cpu = Cpu6502::new(&mut mm);
 
     cpu.power_on_reset();
     ppu.power_on_reset();

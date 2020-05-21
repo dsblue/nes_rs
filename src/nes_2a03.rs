@@ -256,7 +256,7 @@ impl Instruction {
 }
 
 #[derive(Debug)]
-pub struct Cpu6502 {
+pub struct Cpu6502<'a> {
     reg_a: u8,   // Accumulator
     reg_x: u8,   // Index X
     reg_y: u8,   // Index Y
@@ -265,7 +265,7 @@ pub struct Cpu6502 {
     reg_p: u8,   // Status
 
     count: u64,
-    mm: MemoryMap,
+    mm: &'a mut MemoryMap<'a>,
 
     inst: Instruction,
 
@@ -279,8 +279,8 @@ pub struct Cpu6502 {
     cycle: u8,
 }
 
-impl Cpu6502 {
-    pub fn new(mm: MemoryMap) -> Cpu6502 {
+impl<'a> Cpu6502<'a> {
+    pub fn new(mm: &'a mut MemoryMap<'a>) -> Cpu6502<'a> {
         Cpu6502 {
             reg_a: 0,
             reg_x: 0,
@@ -1816,7 +1816,7 @@ impl Cpu6502 {
     }
 }
 
-impl std::fmt::Display for Cpu6502 {
+impl<'a> std::fmt::Display for Cpu6502<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "count: {:08x}\n", self.count)?;
         write!(f, "== Current CPU State ===========================\n")?;
