@@ -18,11 +18,11 @@ const SCANLINES_PER_FRAME: u32 = 262;
 const CYCLES_PER_SCANLINE: u32 = 341;
 
 const PPUCTRL_V: u8 = 0x80;
-const PPUCTRL_P: u8 = 0x40;
-const PPUCTRL_H: u8 = 0x20;
-const PPUCTRL_B: u8 = 0x10;
-const PPUCTRL_S: u8 = 0x08;
-const PPUCTRL_I: u8 = 0x04;
+const _PPUCTRL_P: u8 = 0x40;
+const _PPUCTRL_H: u8 = 0x20;
+const _PPUCTRL_B: u8 = 0x10;
+const _PPUCTRL_S: u8 = 0x08;
+const _PPUCTRL_I: u8 = 0x04;
 
 const PPUSTATUS_VBLANK: u8 = 0x80;
 
@@ -47,7 +47,7 @@ pub enum PpuRegisters {
 #[derive(Debug)]
 enum PpuState {
     WarmUp,
-    VBlank,
+    _VBlank,
 }
 
 impl Default for PpuState {

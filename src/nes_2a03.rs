@@ -20,6 +20,10 @@ const I: u8 = 0b0000_0100; // Interrupt Disable
 const Z: u8 = 0b0000_0010; // Zero
 const C: u8 = 0b0000_0001; // Carry
 
+const IRQ_VECTOR: usize = 0xfffe;
+const NMI_VECTOR: usize = 0xfffa;
+const RESET_VECTOR: usize = 0xfffc;
+
 // Usage: update_status!(reg_p, (reg == 0), Z);
 macro_rules! update_status {
     ($p:expr, $is_set:expr, $flags:expr) => {
@@ -161,6 +165,10 @@ enum Instruction {
     Txa,
     Txs,
     Tya,
+
+    // Interrupts (Not really instructions)
+    Nmi,
+    Irq,
 
     // Invalid Opcodes
     Alr,
@@ -315,7 +323,8 @@ impl Cpu6502 {
         self.reg_s = self.reg_s.wrapping_sub(3);
 
         // Load the reset vector
-        self.reg_pc = (self.read_u8(mm, 0xfffd) as u16) << 8 | self.read_u8(mm, 0xfffc) as u16;
+        self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
+            | self.read_u8(mm, RESET_VECTOR) as u16;
     }
 
     pub fn power_on_reset(&mut self, mm: &MemoryMap) {
@@ -329,7 +338,8 @@ impl Cpu6502 {
         self.reg_s = 0xfd;
 
         // Load the reset vector
-        self.reg_pc = (self.read_u8(mm, 0xfffd) as u16) << 8 | self.read_u8(mm, 0xfffc) as u16;
+        self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
+            | self.read_u8(mm, RESET_VECTOR) as u16;
     }
 
     pub fn _irq(&mut self) {
@@ -350,28 +360,23 @@ impl Cpu6502 {
         match self.cycle {
             1 => {
                 // Check for interrupts
-                if self.irq_pending {
-                    self.irq_pending = false;
-                    self.reg_pc =
-                        (self.read_u8(mm, 0xffff) as u16) << 8 | self.read_u8(mm, 0xfffe) as u16;
-                }
-
                 if self.nmi_pending {
                     self.nmi_pending = false;
-                    self.reg_pc =
-                        (self.read_u8(mm, 0xfffb) as u16) << 8 | self.read_u8(mm, 0xfffa) as u16;
+                    self.inst = Instruction::Nmi;
+                } else if self.irq_pending && (self.reg_p & I == 0) {
+                    self.irq_pending = false;
+                    self.inst = Instruction::Irq;
+                } else {
+                    // Fetch decode
+                    let op = self.read_u8(mm, self.reg_pc as usize);
+                    self.inst = self.decode_op(op);
                 }
-
-                // Fetch decode
-                let op = self.read_u8(mm, self.reg_pc as usize);
-                self.inst = self.decode_op(op);
 
                 // Disassembly info for debug
                 let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
                     | self.read_u8(mm, self.reg_pc as usize + 1) as u16;
 
                 let (name, operand) = self.inst.info(next_mem);
-
                 println!(
                     "{:>8}  {:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
                     self.count,
@@ -452,6 +457,16 @@ impl Cpu6502 {
                 Jsr => self.ex_jsr(mm),
                 Rts => self.ex_rts(mm),
 
+                Pha => self.ex_pha(mm),
+                Php => self.ex_php(mm),
+                Pla => self.ex_pla(mm),
+                Plp => self.ex_plp(mm),
+
+                Brk => self.ex_brk(mm),
+
+                // Meta
+                Nmi => self.ex_nmi(mm),
+                Irq => self.ex_irq(mm),
                 _ => {
                     panic!("Unknown instruction: {:?}", self.inst);
                 }
@@ -1272,7 +1287,67 @@ impl Cpu6502 {
         }
     }
 
+    fn handle_interrupt(&mut self, mm: &mut MemoryMap, vector: usize, set_b: bool) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle += 1;
+            }
+            3 => {
+                self.write_u8(mm, s, (self.reg_pc >> 8) as u8);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.write_u8(mm, s, (self.reg_pc & 0xff) as u8);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle += 1;
+            }
+            5 => {
+                let mut p = self.reg_p & 0b11001111;
+                if set_b {
+                    p |= 0b00110000; // Set 'B' Flag
+                } else {
+                    p |= 0b00100000;
+                }
+                self.write_u8(mm, s, p);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle += 1;
+            }
+            6 => {
+                self.reg_pc = self.read_u8(mm, vector) as u16;
+                self.cycle += 1;
+            }
+            7 => {
+                self.reg_pc |= (self.read_u8(mm, vector + 1) as u16) << 8;
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    fn ex_nmi(&mut self, mm: &mut MemoryMap) {
+        self.handle_interrupt(mm, NMI_VECTOR, false);
+    }
+
+    fn ex_irq(&mut self, mm: &mut MemoryMap) {
+        self.handle_interrupt(mm, IRQ_VECTOR, false);
+
+        if self.cycle == 5 {
+            self.reg_p |= I; // Mask interrupts after pushing status to stack
+        }
+    }
+
     // Start specific Instruction handlers
+    fn ex_brk(&mut self, mm: &mut MemoryMap) {
+        self.handle_interrupt(mm, IRQ_VECTOR, true);
+
+        if self.cycle == 5 {
+            self.reg_p |= I; // Mask interrupts after pushing status to stack
+        }
+    }
 
     fn ex_clc(&mut self) {
         self.reg_p &= !C;
@@ -1458,6 +1533,81 @@ impl Cpu6502 {
             6 => {
                 self.addr |= (self.read_u8(mm, pc) as u16) << 8;
                 self.reg_pc = self.addr;
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    // Push accumulator
+    fn ex_pha(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.write_u8(mm, s, self.reg_a);
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    // Push processor status
+    fn ex_php(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.write_u8(mm, s, self.reg_p | 0b00110000); // Set the 'B' flag to 0b11
+                self.reg_s = self.reg_s.wrapping_sub(1);
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    // Pull accumulator
+    fn ex_pla(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_a = self.read_u8(mm, s);
+                stat_nz!(self.reg_p, self.reg_a);
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    // Pull processor status
+    fn ex_plp(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_p = self.read_u8(mm, s) & 0b11001111; // Ignore the 'B' Flag
                 self.cycle = 1;
             }
             _ => (),
