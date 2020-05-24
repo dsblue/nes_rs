@@ -12,14 +12,14 @@
  */
 use crate::nes_mem::MemoryMap;
 use std::collections::VecDeque;
+use std::default::Default;
 
 #[derive(Debug)]
 pub enum Event {
-    Nmi,
     Reset,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PpuRegisters {
     Ctrl,
     Mask,
@@ -38,19 +38,21 @@ enum PpuState {
     VBlank,
 }
 
-#[derive(Debug)]
+impl Default for PpuState {
+    fn default() -> PpuState {
+        PpuState::WarmUp
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Ppu2c02Interface {
-    nmi: bool,
+    pub nmi: bool,
 
     op: Option<(PpuRegisters, u8)>,
 
     // Cache values for reads
-    //ctrl: u8,
-    //mask: u8,
     status: u8,
-    //oamaddr: u8,
     oamdata: u8,
-    //scroll: u8,
     addr: u8,
     data: u8,
     oamdma: u8,
@@ -58,39 +60,30 @@ pub struct Ppu2c02Interface {
 
 impl Ppu2c02Interface {
     pub fn new() -> Ppu2c02Interface {
-        Ppu2c02Interface {
-            nmi: false,
-            op: None,
-            status: 0,
-            oamdata: 0,
-            addr: 0,
-            data: 0,
-            oamdma: 0,
+        Ppu2c02Interface::default()
+    }
+
+    pub fn ppu_write(&mut self, reg: PpuRegisters, val: u8) {
+        match reg {
+            PpuRegisters::Status => self.status = val,
+            PpuRegisters::OamData => self.oamdata = val,
+            PpuRegisters::Addr => self.addr = val,
+            PpuRegisters::Data => self.data = val,
+            PpuRegisters::OamDma => self.oamdma = val,
+            _ => (),
         }
     }
 
-    pub fn is_nmi(&self) -> bool {
-        self.nmi
-    }
-
-    pub fn set_nmi(&mut self, nmi: bool) {
-        self.nmi = nmi;
-    }
-
-    pub fn set_reg(&mut self, offset: u8, val: u8) {
-        match offset {
-            0x02 => self.status = val,
-            0x04 => self.oamdata = val,
-            0x06 => self.addr = val,
-            0x07 => self.data = val,
-            0x14 => self.oamdma = val,
-            _ => {
-                error!("Attempt to set an invalid PPU register");
-            }
+    pub fn ppu_pop_write_op(&mut self) -> Option<(PpuRegisters, u8)> {
+        if let Some(op) = self.op {
+            self.op = None;
+            Some(op)
+        } else {
+            None
         }
     }
 
-    pub fn reg_write(&mut self, offset: u8, val: u8) {
+    pub fn cpu_write(&mut self, offset: u8, val: u8) {
         match offset {
             0x00 => self.op = Some((PpuRegisters::Ctrl, val)),
             0x01 => self.op = Some((PpuRegisters::Mask, val)),
@@ -108,7 +101,7 @@ impl Ppu2c02Interface {
         }
     }
 
-    pub fn reg_read(&self, offset: u8) -> u8 {
+    pub fn cpu_read(&self, offset: u8) -> u8 {
         match offset {
             0x02 => self.status,
             0x04 => self.oamdata,
@@ -121,33 +114,33 @@ impl Ppu2c02Interface {
             }
         }
     }
-
-    fn pop_op(&mut self) -> Option<(PpuRegisters, u8)> {
-        None
-        //let mut reg: PpuRegisters;
-        //if let Some(i) = self.op {
-        //    reg = i.0;
-        //}
-        //match self.op {
-        //    Some(ref i) => Some(i),
-        //    _ => None,
-        //}
-        //Some(self.op.unwrap())
-    }
 }
 
-#[derive(Debug)]
+const SCANLINES_PER_FRAME: u32 = 262;
+const CYCLES_PER_SCANLINE: u32 = 341;
+
+#[derive(Debug, Default)]
 pub struct Ppu2c02 {
+    reg_ppuctrl: u8,
+    reg_ppumask: u8,
+    reg_ppustatus: u8,
+    reg_oamaddr: u8,
+    reg_oamdata: u8,
+    reg_ppuscroll: u8,
+    reg_ppuaddr: u8,
+    reg_ppudata: u8,
+    reg_oamdma: u8,
+
+    scanline: u32,
+    cycle: u32,
+
     state: PpuState,
     count: u64,
 }
 
 impl Ppu2c02 {
     pub fn new() -> Ppu2c02 {
-        Ppu2c02 {
-            state: PpuState::WarmUp,
-            count: 0,
-        }
+        Ppu2c02::default()
     }
 
     pub fn reset(&mut self) {
@@ -160,25 +153,51 @@ impl Ppu2c02 {
         self.count = 0;
     }
 
-    pub fn tick(&mut self, mm: &mut MemoryMap, e: &mut VecDeque<Event>) {
+    pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         // Handle register writes placed on the bus from the CPU
-        if let Some(op) = mm.ppu.pop_op() {
+        if let Some(op) = mm.ppu.ppu_pop_write_op() {
             match op {
-                (PpuRegisters::Ctrl, _v) => {}
-                (PpuRegisters::Mask, _v) => {}
-                (PpuRegisters::OamAddr, _v) => {}
-                (PpuRegisters::OamData, _v) => {}
-                (PpuRegisters::Scroll, _v) => {}
-                (PpuRegisters::Addr, _v) => {}
-                (PpuRegisters::Data, _v) => {}
-                (PpuRegisters::OamDma, _v) => {}
-                (_, _) => {}
+                (PpuRegisters::Ctrl, v) => {
+                    self.reg_ppuctrl = v;
+                }
+                (PpuRegisters::Status, v) => {
+                    self.reg_ppustatus = v;
+                }
+                (PpuRegisters::Mask, v) => {
+                    self.reg_ppumask = v;
+                }
+                (PpuRegisters::OamAddr, v) => {
+                    self.reg_oamaddr = v;
+                }
+                (PpuRegisters::OamData, v) => {
+                    self.reg_oamdata = v;
+                }
+                (PpuRegisters::Scroll, v) => {
+                    self.reg_ppuscroll = v;
+                }
+                (PpuRegisters::Addr, v) => {
+                    self.reg_ppuaddr = v;
+                }
+                (PpuRegisters::Data, v) => {
+                    self.reg_ppudata = v;
+                }
+                (PpuRegisters::OamDma, v) => {
+                    self.reg_oamdma = v;
+                }
             }
         }
 
         self.state = match self.state {
             PpuState::WarmUp => {
+                if self.scanline == SCANLINES_PER_FRAME {
+                    self.scanline = 0;
+                }
+
+                if self.cycle == CYCLES_PER_SCANLINE {
+                    self.cycle = 0;
+                }
                 if self.count == 29658 {
+                    mm.ppu.ppu_write(PpuRegisters::Status, 0xff);
                     PpuState::VBlank
                 } else {
                     PpuState::WarmUp
@@ -186,7 +205,7 @@ impl Ppu2c02 {
             }
             PpuState::VBlank => {
                 if self.count == 90000 {
-                    e.push_front(Event::Nmi);
+                    mm.ppu.nmi = true;
                 }
                 PpuState::VBlank
             }

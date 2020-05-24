@@ -58,6 +58,12 @@ fn run(rom: Rom) {
     loop {
         cpu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
+
+        if mm.ppu.nmi {
+            mm.ppu.nmi = false;
+            cpu.nmi();
+        }
+
         // Handle any generated events
         while let Some(e) = events.pop_back() {
             match e {
@@ -65,7 +71,6 @@ fn run(rom: Rom) {
                     cpu.reset(&mm);
                     ppu.reset();
                 }
-                Event::Nmi => cpu.nmi(),
             }
         }
 

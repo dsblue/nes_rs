@@ -469,7 +469,7 @@ impl Cpu6502 {
             }
             0x2000..=0x3fff => {
                 // PPU Registers
-                mm.ppu.reg_read((addr & 0b111) as u8)
+                mm.ppu.cpu_read((addr & 0b111) as u8)
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
@@ -488,7 +488,7 @@ impl Cpu6502 {
             }
             0x2000..=0x3fff => {
                 // PPU Registers
-                mm.ppu.reg_write((addr & 0b111) as u8, val);
+                mm.ppu.cpu_write((addr & 0b111) as u8, val);
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
