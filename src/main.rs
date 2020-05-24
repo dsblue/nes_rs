@@ -58,6 +58,8 @@ fn run(rom: Rom) {
     loop {
         cpu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
+        ppu.tick(&mut mm, &mut events);
+        ppu.tick(&mut mm, &mut events);
 
         if mm.ppu.nmi {
             mm.ppu.nmi = false;

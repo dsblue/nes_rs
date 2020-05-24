@@ -474,7 +474,7 @@ impl Cpu6502 {
             0x4000..=0x401f => {
                 // NES APU and IO registers
                 error!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
-                (addr - 0x4000) as u8
+                0
             }
             _ => mm.cpu_read_u8(addr),
         }

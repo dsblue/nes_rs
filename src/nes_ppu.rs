@@ -14,6 +14,18 @@ use crate::nes_mem::MemoryMap;
 use std::collections::VecDeque;
 use std::default::Default;
 
+const SCANLINES_PER_FRAME: u32 = 262;
+const CYCLES_PER_SCANLINE: u32 = 341;
+
+const PPUCTRL_V: u8 = 0x80;
+const PPUCTRL_P: u8 = 0x40;
+const PPUCTRL_H: u8 = 0x20;
+const PPUCTRL_B: u8 = 0x10;
+const PPUCTRL_S: u8 = 0x08;
+const PPUCTRL_I: u8 = 0x04;
+
+const PPUSTATUS_VBLANK: u8 = 0x80;
+
 #[derive(Debug)]
 pub enum Event {
     Reset,
@@ -116,9 +128,6 @@ impl Ppu2c02Interface {
     }
 }
 
-const SCANLINES_PER_FRAME: u32 = 262;
-const CYCLES_PER_SCANLINE: u32 = 341;
-
 #[derive(Debug, Default)]
 pub struct Ppu2c02 {
     reg_ppuctrl: u8,
@@ -162,6 +171,7 @@ impl Ppu2c02 {
                 }
                 (PpuRegisters::Status, v) => {
                     self.reg_ppustatus = v;
+                    mm.ppu.ppu_write(op.0, v);
                 }
                 (PpuRegisters::Mask, v) => {
                     self.reg_ppumask = v;
@@ -171,45 +181,64 @@ impl Ppu2c02 {
                 }
                 (PpuRegisters::OamData, v) => {
                     self.reg_oamdata = v;
+                    mm.ppu.ppu_write(op.0, v);
                 }
                 (PpuRegisters::Scroll, v) => {
                     self.reg_ppuscroll = v;
                 }
                 (PpuRegisters::Addr, v) => {
                     self.reg_ppuaddr = v;
+                    mm.ppu.ppu_write(op.0, v);
                 }
                 (PpuRegisters::Data, v) => {
                     self.reg_ppudata = v;
+                    mm.ppu.ppu_write(op.0, v);
                 }
                 (PpuRegisters::OamDma, v) => {
                     self.reg_oamdma = v;
+                    mm.ppu.ppu_write(op.0, v);
                 }
             }
         }
 
-        self.state = match self.state {
-            PpuState::WarmUp => {
-                if self.scanline == SCANLINES_PER_FRAME {
-                    self.scanline = 0;
+        match self.scanline {
+            0 => {
+                if self.cycle == 0 {
+                    info!("PPU: Starting scanline {}", self.scanline);
                 }
+            }
+            1..=239 => {}
+            240 => {}
+            241 => {
+                if self.cycle == 1 {
+                    self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
+                    mm.ppu.ppu_write(PpuRegisters::Status, self.reg_ppustatus);
+                    if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
+                        mm.ppu.nmi = true;
+                    }
+                }
+            }
+            242..=260 => {}
+            261 => {
+                if self.cycle == 1 {
+                    self.reg_ppustatus = self.reg_ppustatus & !PPUSTATUS_VBLANK;
+                    mm.ppu.ppu_write(PpuRegisters::Status, self.reg_ppustatus);
+                }
+            }
+            _ => (),
+        }
 
-                if self.cycle == CYCLES_PER_SCANLINE {
-                    self.cycle = 0;
-                }
-                if self.count == 29658 {
-                    mm.ppu.ppu_write(PpuRegisters::Status, 0xff);
-                    PpuState::VBlank
-                } else {
-                    PpuState::WarmUp
-                }
-            }
-            PpuState::VBlank => {
-                if self.count == 90000 {
-                    mm.ppu.nmi = true;
-                }
-                PpuState::VBlank
-            }
-        };
+        if self.scanline == SCANLINES_PER_FRAME {
+            self.scanline = 0;
+        } else {
+            self.scanline += 1;
+        }
+
+        if self.cycle == CYCLES_PER_SCANLINE {
+            self.cycle = 0;
+        } else {
+            self.cycle += 1;
+        }
 
         self.count += 1;
     }
