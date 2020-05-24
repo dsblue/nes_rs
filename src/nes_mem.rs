@@ -1,7 +1,7 @@
-use crate::Event;
-use crate::Ppu2c02;
+use crate::nes_ppu::Ppu2c02Interface;
+//use crate::Event;
 use crate::Rom;
-use std::collections::VecDeque;
+//use std::collections::VecDeque;
 use std::fmt;
 
 pub trait MemoryMapInterface {
@@ -68,9 +68,8 @@ impl<'a> fmt::Debug for Region {
 }
 
 pub struct MemoryMap {
-    internal_ram: [u8; 2 * 1024],
-    ppu: Ppu2c02,
     regions: Vec<Region>,
+    pub ppu: Ppu2c02Interface,
 }
 
 impl<'a> fmt::Debug for MemoryMap {
@@ -82,9 +81,8 @@ impl<'a> fmt::Debug for MemoryMap {
 impl<'a> MemoryMap {
     pub fn new(rom: &Rom) -> MemoryMap {
         let mut mm = MemoryMap {
-            internal_ram: [0u8; 2 * 1024],
-            ppu: Ppu2c02::new(),
             regions: Vec::new(),
+            ppu: Ppu2c02Interface::new(),
         };
 
         // Build the rest of the memory map based on the mapper value
@@ -131,85 +129,22 @@ impl<'a> MemoryMap {
         mm
     }
 
-    pub fn read_u8(&self, address: usize) -> u8 {
-        match address {
-            0x0000..=0x1fff => {
-                // 2KB internal RAM mirrored x 4
-                self.internal_ram[0x07ff & address]
-            }
-            0x2000..=0x3fff => {
-                // PPU Registers
-                self.ppu.read_u8(address & 0b111)
-            }
-            0x4000..=0x401f => {
-                // NES APU and IO registers
-                error!("APU Not implemented: Read APU:0x{:04x}", (address - 0x4000));
-                (address - 0x4000) as u8
-            }
-            _ => {
-                for r in &self.regions {
-                    if address >= r.start && address < r.start + r.size {
-                        return r.region.read_u8(address - r.start);
-                    }
-                }
-                error!("Memory address not mapped: {:04x}", address);
-                0
+    pub fn cpu_read_u8(&self, address: usize) -> u8 {
+        for r in &self.regions {
+            if address >= r.start && address < r.start + r.size {
+                return r.region.read_u8(address - r.start);
             }
         }
+        error!("Memory address not mapped: {:04x}", address);
+        0
     }
 
-    pub fn read_u16(&self, address: usize) -> u16 {
-        match address {
-            _ => {
-                for r in &self.regions {
-                    if address >= r.start && address < r.start + r.size {
-                        return r.region.read_u16(address - r.start);
-                    }
-                }
-                error!("Memory address not mapped: {:04x}", address);
-                0
+    pub fn cpu_write_u8(&mut self, address: usize, val: u8) {
+        for r in &mut self.regions {
+            if address >= r.start && address < r.start + r.size {
+                return r.region.write_u8(address - r.start, val);
             }
         }
-    }
-
-    pub fn write_u8(&mut self, address: usize, val: u8) {
-        match address {
-            0x0000..=0x1fff => {
-                // 2KB internal RAM mirrored x 4
-                self.internal_ram[0x07ff & address] = val;
-            }
-            0x2000..=0x3fff => {
-                // PPU Registers
-                self.ppu.write_u8(address & 0b111, val);
-            }
-            0x4000..=0x401f => {
-                // NES APU and IO registers
-                error!(
-                    "APU Not implemented: Write APU:0x{:04x}: 0x{:02x}",
-                    (address - 0x4000),
-                    val
-                );
-            }
-            _ => {
-                for r in &mut self.regions {
-                    if address >= r.start && address < r.start + r.size {
-                        return r.region.write_u8(address - r.start, val);
-                    }
-                }
-                error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
-            }
-        }
-    }
-
-    pub fn power_on_reset(&mut self) {
-        self.ppu.power_on_reset();
-    }
-
-    pub fn tick(&mut self, e: &mut VecDeque<Event>) {
-        self.ppu.tick(e);
-    }
-
-    pub fn reset(&mut self) {
-        self.ppu.reset();
+        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
     }
 }

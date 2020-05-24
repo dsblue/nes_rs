@@ -49,22 +49,21 @@ fn run(rom: Rom) {
     let mut mm = MemoryMap::new(&rom);
     let mut events: VecDeque<Event> = VecDeque::new();
     let mut cpu = Cpu6502::new();
+    let mut ppu = Ppu2c02::new();
 
-    mm.power_on_reset();
     cpu.power_on_reset(&mm);
-
+    ppu.power_on_reset();
     events.push_front(Event::Reset);
 
     loop {
-        mm.tick(&mut events);
         cpu.tick(&mut mm, &mut events);
-
+        ppu.tick(&mut mm, &mut events);
         // Handle any generated events
         while let Some(e) = events.pop_back() {
             match e {
                 Event::Reset => {
                     cpu.reset(&mm);
-                    mm.reset();
+                    ppu.reset();
                 }
                 Event::Nmi => cpu.nmi(),
             }
