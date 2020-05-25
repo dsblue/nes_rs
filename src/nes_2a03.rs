@@ -463,6 +463,7 @@ impl Cpu6502 {
                 Jmp(m) => self.ex_jmp(mm, m),
                 Jsr => self.ex_jsr(mm),
                 Rts => self.ex_rts(mm),
+                Rti => self.ex_rti(mm),
 
                 Pha => self.ex_pha(mm),
                 Php => self.ex_php(mm),
@@ -1253,15 +1254,15 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.ptr = self.read_u8(mm, ptr);
+                    let t = self.read_u8(mm, ptr);
+                    self.addr = t.wrapping_add(self.reg_y) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.addr = self.read_u8(mm, ptr) as u16;
+                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
                 5 => {
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
                 6 => {
@@ -1505,6 +1506,36 @@ impl Cpu6502 {
             } else {
                 self.cycle = 1;
             }
+        }
+    }
+
+    // RTI Return from interrupt
+    fn ex_rti(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
+
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_p = self.read_u8(mm, s);
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            5 => {
+                self.reg_pc = self.read_u8(mm, s) as u16;
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            6 => {
+                self.reg_pc |= (self.read_u8(mm, s) as u16) << 8;
+                self.cycle = 1;
+            }
+            _ => (),
         }
     }
 
