@@ -1,5 +1,12 @@
 /**
  *
+ * NES CPU / APU Emulation Model
+ *
+ * This model attempts to provide a cycle accurate emulation of the 2A03 CPU
+ * used in the NA NES.  The chip includes a 6502 CPU core, APU for sound
+ * generation and some IO ports for controller interaction.
+ *
+ *
  * 6502 Instruction behavior:
  * http://obelisk.me.uk/6502/reference.html
  *
@@ -9,6 +16,7 @@
  * Used Opcode names from: http://www.oxyron.de/html/opcodes02.html
  */
 use std::collections::VecDeque;
+use std::string::String;
 
 use crate::nes_ppu::Event;
 use crate::MemoryMap;
@@ -105,6 +113,24 @@ impl AddressMode {
             Izy => format!("(${:02x}),Y", o as u8),
         }
     }
+
+    fn size(&self) -> u8 {
+        use AddressMode::*;
+
+        match *self {
+            Imp => 1,
+            Imm => 2,
+            Zp => 2,
+            Zpx => 2,
+            Zpy => 2,
+            Abs => 3,
+            Abx => 3,
+            Aby => 3,
+            Ind => 3,
+            Izx => 2,
+            Izy => 2,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -166,14 +192,11 @@ enum Instruction {
     Txs,
     Tya,
 
-    // Interrupts (Not really instructions)
-    Nmi,
-    Irq,
-
     // Invalid Opcodes
+    Ahx(AddressMode), // Also known as SHA
     Alr,
-    Arr,
     Anc,
+    Arr,
     Axs,
     Dcp(AddressMode),
     Isc(AddressMode),
@@ -183,7 +206,6 @@ enum Instruction {
     Rla(AddressMode),
     Rra(AddressMode),
     Sax(AddressMode),
-    Ahx(AddressMode), // Also known as SHA
     Shx(AddressMode),
     Shy(AddressMode),
     Slo(AddressMode),
@@ -191,74 +213,75 @@ enum Instruction {
     Tas,
     Xaa,
 
-    _Invalid,
-    _Unimplemented,
+    // Interrupts (Not really instructions)
+    Nmi,
+    Irq,
 }
 
 impl Instruction {
-    fn info(&self, o: u16) -> (&str, String) {
+    fn info(&self, o: u16) -> (&str, String, u8) {
         use AddressMode::*;
         use Instruction::*;
 
         match *self {
-            Adc(m) => ("adc", m.display(o)),
-            And(m) => ("and", m.display(o)),
-            Asl(m) => ("asl", m.display(o)),
-            Bcc => ("bcc", Imm.display(o)),
-            Bcs => ("bcs", Imm.display(o)),
-            Beq => ("beq", Imm.display(o)),
-            Bit(m) => ("bit", m.display(o)),
-            Bmi => ("bmi", Imm.display(o)),
-            Bne => ("bne", Imm.display(o)),
-            Bpl => ("bpl", Imm.display(o)),
-            Brk => ("brk", "".to_string()),
-            Bvc => ("bvc", Imm.display(o)),
-            Bvs => ("bvs", Imm.display(o)),
-            Clc => ("clc", "".to_string()),
-            Cld => ("cld", "".to_string()),
-            Cli => ("cli", "".to_string()),
-            Clv => ("clv", "".to_string()),
-            Cmp(m) => ("cmp", m.display(o)),
-            Cpx(m) => ("cpx", m.display(o)),
-            Cpy(m) => ("cpy", m.display(o)),
-            Dec(m) => ("dec", m.display(o)),
-            Dex => ("dex", "".to_string()),
-            Dey => ("dey", "".to_string()),
-            Eor(m) => ("eor", m.display(o)),
-            Inc(m) => ("inc", m.display(o)),
-            Inx => ("inx", "".to_string()),
-            Iny => ("iny", "".to_string()),
-            Jmp(_m) => ("jmp", Imm.display(o)),
-            Jsr => ("jsr", Imm.display(o)),
-            Lda(m) => ("lda", m.display(o)),
-            Ldx(m) => ("ldx", m.display(o)),
-            Ldy(m) => ("ldy", m.display(o)),
-            Lsr(m) => ("lsr", m.display(o)),
-            Nop(m) => ("nop", m.display(o)),
-            Ora(m) => ("ora", m.display(o)),
-            Pha => ("pha", "".to_string()),
-            Php => ("php", "".to_string()),
-            Pla => ("pla", "".to_string()),
-            Plp => ("plp", "".to_string()),
-            Rol(m) => ("rol", m.display(o)),
-            Ror(m) => ("ror", m.display(o)),
-            Rti => ("rti", "".to_string()),
-            Rts => ("rts", "".to_string()),
-            Sbc(m) => ("sbc", m.display(o)),
-            Sec => ("sec", "".to_string()),
-            Sed => ("sed", "".to_string()),
-            Sei => ("sei", "".to_string()),
-            Sta(m) => ("sta", m.display(o)),
-            Stx(m) => ("stx", m.display(o)),
-            Sty(m) => ("sty", m.display(o)),
-            Tax => ("tax", "".to_string()),
-            Tay => ("tay", "".to_string()),
-            Tsx => ("tsx", "".to_string()),
-            Txa => ("txa", "".to_string()),
-            Txs => ("txs", "".to_string()),
-            Tya => ("tya", "".to_string()),
+            Adc(m) => ("adc", m.display(o), m.size()),
+            And(m) => ("and", m.display(o), m.size()),
+            Asl(m) => ("asl", m.display(o), m.size()),
+            Bcc => ("bcc", Imm.display(o), 2),
+            Bcs => ("bcs", Imm.display(o), 2),
+            Beq => ("beq", Imm.display(o), 2),
+            Bit(m) => ("bit", m.display(o), m.size()),
+            Bmi => ("bmi", Imm.display(o), 2),
+            Bne => ("bne", Imm.display(o), 2),
+            Bpl => ("bpl", Imm.display(o), 2),
+            Brk => ("brk", "".to_string(), 1),
+            Bvc => ("bvc", Imm.display(o), 2),
+            Bvs => ("bvs", Imm.display(o), 2),
+            Clc => ("clc", "".to_string(), 1),
+            Cld => ("cld", "".to_string(), 1),
+            Cli => ("cli", "".to_string(), 1),
+            Clv => ("clv", "".to_string(), 1),
+            Cmp(m) => ("cmp", m.display(o), m.size()),
+            Cpx(m) => ("cpx", m.display(o), m.size()),
+            Cpy(m) => ("cpy", m.display(o), m.size()),
+            Dec(m) => ("dec", m.display(o), m.size()),
+            Dex => ("dex", "".to_string(), 1),
+            Dey => ("dey", "".to_string(), 1),
+            Eor(m) => ("eor", m.display(o), m.size()),
+            Inc(m) => ("inc", m.display(o), m.size()),
+            Inx => ("inx", "".to_string(), 1),
+            Iny => ("iny", "".to_string(), 1),
+            Jmp(m) => ("jmp", Imm.display(o), m.size()),
+            Jsr => ("jsr", Imm.display(o), 3),
+            Lda(m) => ("lda", m.display(o), m.size()),
+            Ldx(m) => ("ldx", m.display(o), m.size()),
+            Ldy(m) => ("ldy", m.display(o), m.size()),
+            Lsr(m) => ("lsr", m.display(o), m.size()),
+            Nop(m) => ("nop", m.display(o), m.size()),
+            Ora(m) => ("ora", m.display(o), m.size()),
+            Pha => ("pha", "".to_string(), 1),
+            Php => ("php", "".to_string(), 1),
+            Pla => ("pla", "".to_string(), 1),
+            Plp => ("plp", "".to_string(), 1),
+            Rol(m) => ("rol", m.display(o), m.size()),
+            Ror(m) => ("ror", m.display(o), m.size()),
+            Rti => ("rti", "".to_string(), 1),
+            Rts => ("rts", "".to_string(), 1),
+            Sbc(m) => ("sbc", m.display(o), m.size()),
+            Sec => ("sec", "".to_string(), 1),
+            Sed => ("sed", "".to_string(), 1),
+            Sei => ("sei", "".to_string(), 1),
+            Sta(m) => ("sta", m.display(o), m.size()),
+            Stx(m) => ("stx", m.display(o), m.size()),
+            Sty(m) => ("sty", m.display(o), m.size()),
+            Tax => ("tax", "".to_string(), 1),
+            Tay => ("tay", "".to_string(), 1),
+            Tsx => ("tsx", "".to_string(), 1),
+            Txa => ("txa", "".to_string(), 1),
+            Txs => ("txs", "".to_string(), 1),
+            Tya => ("tya", "".to_string(), 1),
 
-            _ => ("--", "--".to_string()),
+            _ => ("--", "--".to_string(), 0),
         }
     }
 }
@@ -277,7 +300,7 @@ pub struct Cpu6502 {
     inst: Instruction,
 
     nmi_pending: bool,
-    irq_pending: bool,
+    irq_level: bool,
 
     addr: u16,
     addr_prev: u16,
@@ -303,7 +326,7 @@ impl Cpu6502 {
             inst: Instruction::Brk,
 
             nmi_pending: false,
-            irq_pending: false,
+            irq_level: false,
 
             addr: 0,
             addr_prev: 0,
@@ -342,15 +365,11 @@ impl Cpu6502 {
             | self.read_u8(mm, RESET_VECTOR) as u16;
     }
 
-    pub fn _irq(&mut self) {
-        info!("IRQ");
-        if (self.reg_p & I) == 0 {
-            self.irq_pending = true;
-        }
+    pub fn _irq(&mut self, level: bool) {
+        self.irq_level = level;
     }
 
     pub fn nmi(&mut self) {
-        info!("NMI");
         self.nmi_pending = true;
     }
 
@@ -361,65 +380,78 @@ impl Cpu6502 {
             1 => {
                 // Check for interrupts
                 if self.nmi_pending {
+                    info!("NMI");
                     self.nmi_pending = false;
                     self.inst = Instruction::Nmi;
-                } else if self.irq_pending && (self.reg_p & I == 0) {
-                    self.irq_pending = false;
+                } else if !self.irq_level && (self.reg_p & I == 0) {
+                    info!("IRQ");
                     self.inst = Instruction::Irq;
                 } else {
                     // Fetch decode
                     let op = self.read_u8(mm, self.reg_pc as usize);
-                    self.inst = self.decode_op(op);
+                    self.inst = Cpu6502::decode_op(op);
                 }
 
-                // Disassembly info for debug
-                let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
-                    | self.read_u8(mm, self.reg_pc as usize + 1) as u16;
-
-                let (name, operand) = self.inst.info(next_mem);
-                println!(
-                    "{:>8}  {:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
-                    self.count,
-                    self.reg_pc,
-                    name.to_ascii_uppercase(),
-                    operand,
-                    self.status_as_string(),
-                    self.reg_a,
-                    self.reg_x,
-                    self.reg_y,
-                    self.reg_s as u16 + 0x0100,
-                    self.stack_as_string(mm),
-                );
+                println!("{:>8}  {}", self.count, self.disassemble_current(mm));
 
                 if self.reg_pc == 0x8e14 {
-                    println!("{}", self.dump_ram(mm, 0x00, 20));
+                    println!("{}", self.dump_memory(mm, 0x00, 20));
                 }
 
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
             _ => match self.inst {
+                Adc(m) => self.ex_adc(mm, m),
+                And(m) => self.ex_and(mm, m),
+                Asl(m) => self.ex_asl(mm, m),
+                Bcc => self.ex_bcc(mm),
+                Bcs => self.ex_bcs(mm),
+                Beq => self.ex_beq(mm),
+                Bit(m) => self.ex_bit(mm, m),
+                Bmi => self.ex_bmi(mm),
+                Bne => self.ex_bne(mm),
+                Bpl => self.ex_bpl(mm),
+                Brk => self.ex_brk(mm),
+                Bvc => self.ex_bvc(mm),
+                Bvs => self.ex_bvs(mm),
                 Clc => self.ex_clc(),
                 Cld => self.ex_cld(),
                 Cli => self.ex_cli(),
-
-                Sec => self.ex_sec(),
-                Sed => self.ex_sed(),
-                Sei => self.ex_sei(),
-
-                Ahx(m) => self.ex_ahx(mm, m),
-                Shx(m) => self.ex_shx(mm, m),
-                Shy(m) => self.ex_shy(mm, m),
-                Sax(m) => self.ex_sax(mm, m),
-
-                Sta(m) => self.ex_sta(mm, m),
-                Stx(m) => self.ex_stx(mm, m),
-                Sty(m) => self.ex_sty(mm, m),
-
+                Clv => self.ex_clv(),
+                Cmp(m) => self.ex_cmp(mm, m),
+                Cpx(m) => self.ex_cpx(mm, m),
+                Cpy(m) => self.ex_cpy(mm, m),
+                Dec(m) => self.ex_dec(mm, m),
+                Dex => self.ex_dex(),
+                Dey => self.ex_dey(),
+                Eor(m) => self.ex_eor(mm, m),
+                Inc(m) => self.ex_inc(mm, m),
+                Inx => self.ex_inx(),
+                Iny => self.ex_iny(),
+                Jmp(m) => self.ex_jmp(mm, m),
+                Jsr => self.ex_jsr(mm),
                 Lda(m) => self.ex_lda(mm, m),
                 Ldx(m) => self.ex_ldx(mm, m),
                 Ldy(m) => self.ex_ldy(mm, m),
-
+                Lsr(m) => self.ex_lsr(mm, m),
+                Nop(m) => self.ex_nop(mm, m),
+                Ora(m) => self.ex_ora(mm, m),
+                Pha => self.ex_pha(mm),
+                Php => self.ex_php(mm),
+                Pla => self.ex_pla(mm),
+                Plp => self.ex_plp(mm),
+                Rol(m) => self.ex_rol(mm, m),
+                Ror(m) => self.ex_ror(mm, m),
+                Rti => self.ex_rti(mm),
+                Rts => self.ex_rts(mm),
+                Sbc(m) => self.ex_sbc(mm, m),
+                Sec => self.ex_sec(),
+                Sed => self.ex_sed(),
+                Sei => self.ex_sei(),
+                Sta(m) => self.ex_sta(mm, m),
+                Stx(m) => self.ex_stx(mm, m),
+                Sty(m) => self.ex_sty(mm, m),
                 Tax => self.ex_tax(),
                 Tay => self.ex_tay(),
                 Tsx => self.ex_tsx(),
@@ -427,57 +459,30 @@ impl Cpu6502 {
                 Txs => self.ex_txs(),
                 Tya => self.ex_tya(),
 
-                Dec(m) => self.ex_dec(mm, m),
-                Dex => self.ex_dex(),
-                Dey => self.ex_dey(),
-                Inc(m) => self.ex_inc(mm, m),
-                Inx => self.ex_inx(),
-                Iny => self.ex_iny(),
-
-                Eor(m) => self.ex_eor(mm, m),
-                Ora(m) => self.ex_ora(mm, m),
-                And(m) => self.ex_and(mm, m),
-                Adc(m) => self.ex_adc(mm, m),
-                Sbc(m) => self.ex_sbc(mm, m),
-                Cmp(m) => self.ex_cmp(mm, m),
-                Cpx(m) => self.ex_cpx(mm, m),
-                Cpy(m) => self.ex_cpy(mm, m),
-                Bit(m) => self.ex_bit(mm, m),
+                // Unusual Instructions
+                Ahx(m) => self.ex_ahx(mm, m),
+                Alr => panic!("Unimplemented Opcode {:?}", self.inst),
+                Anc => panic!("Unimplemented Opcode {:?}", self.inst),
+                Arr => panic!("Unimplemented Opcode {:?}", self.inst),
+                Axs => panic!("Unimplemented Opcode {:?}", self.inst),
+                Dcp(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Isc(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Kil => panic!("Unimplemented Opcode {:?}", self.inst),
+                Las => panic!("Unimplemented Opcode {:?}", self.inst),
                 Lax(m) => self.ex_lax(mm, m),
-                Nop(m) => self.ex_nop(mm, m),
+                Rla(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Rra(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Shx(m) => self.ex_shx(mm, m),
+                Shy(m) => self.ex_shy(mm, m),
+                Sax(m) => self.ex_sax(mm, m),
+                Slo(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Sre(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Tas => panic!("Unimplemented Opcode {:?}", self.inst),
+                Xaa => panic!("Unimplemented Opcode {:?}", self.inst),
 
-                Lsr(m) => self.ex_lsr(mm, m),
-                Asl(m) => self.ex_asl(mm, m),
-                Ror(m) => self.ex_ror(mm, m),
-                Rol(m) => self.ex_rol(mm, m),
-
-                Bcc => self.ex_bcc(mm),
-                Bcs => self.ex_bcs(mm),
-                Beq => self.ex_beq(mm),
-                Bmi => self.ex_bmi(mm),
-                Bne => self.ex_bne(mm),
-                Bpl => self.ex_bpl(mm),
-                Bvc => self.ex_bvc(mm),
-                Bvs => self.ex_bvs(mm),
-
-                Jmp(m) => self.ex_jmp(mm, m),
-                Jsr => self.ex_jsr(mm),
-                Rts => self.ex_rts(mm),
-                Rti => self.ex_rti(mm),
-
-                Pha => self.ex_pha(mm),
-                Php => self.ex_php(mm),
-                Pla => self.ex_pla(mm),
-                Plp => self.ex_plp(mm),
-
-                Brk => self.ex_brk(mm),
-
-                // Meta
+                // Meta Instructions
                 Nmi => self.ex_nmi(mm),
                 Irq => self.ex_irq(mm),
-                _ => {
-                    panic!("Unknown instruction: {:?}", self.inst);
-                }
             },
         }
 
@@ -525,7 +530,7 @@ impl Cpu6502 {
         }
     }
 
-    fn decode_op(&mut self, op: u8) -> Instruction {
+    fn decode_op(op: u8) -> Instruction {
         use AddressMode::*;
         use Instruction::*;
 
@@ -789,6 +794,56 @@ impl Cpu6502 {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn disassemble(mm: &MemoryMap, address: usize, num: usize) -> String {
+        let mut s = String::new();
+        let mut address = address;
+
+        for _ in 0..num {
+            // Disassembly info for debug
+            let op = mm.cpu_read_u8(address);
+            let inst = Cpu6502::decode_op(op);
+            let next_mem =
+                (mm.cpu_read_u8(address + 2) as u16) << 8 | mm.cpu_read_u8(address + 1) as u16;
+            let (name, operand, size) = inst.info(next_mem);
+
+            if size == 0 {
+                s = format!("{}Unknown inst: (0x{:02x}) {}, break\n", s, op, name);
+                break;
+            } else {
+                s = format!(
+                    "{}{:04x}: {} {:<8}\n",
+                    s,
+                    address,
+                    name.to_ascii_uppercase(),
+                    operand,
+                );
+            }
+            address += size as usize;
+        }
+        s
+    }
+
+    fn disassemble_current(&self, mm: &mut MemoryMap) -> String {
+        // Disassembly info for debug
+        let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
+            | self.read_u8(mm, self.reg_pc as usize + 1) as u16;
+
+        let (name, operand, _) = self.inst.info(next_mem);
+        format!(
+            "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
+            self.reg_pc,
+            name.to_ascii_uppercase(),
+            operand,
+            self.status_as_string(),
+            self.reg_a,
+            self.reg_x,
+            self.reg_y,
+            self.reg_s as u16 + 0x0100,
+            self.stack_as_string(mm),
+        )
+    }
+
     fn stack_as_string(&self, mm: &mut MemoryMap) -> String {
         format!(
             "[{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}]",
@@ -803,7 +858,7 @@ impl Cpu6502 {
         )
     }
 
-    fn dump_ram(&self, mm: &mut MemoryMap, addr: usize, len: u16) -> String {
+    fn dump_memory(&self, mm: &mut MemoryMap, addr: usize, len: u16) -> String {
         let mut s = String::from("");
         let mut addr = addr;
 
@@ -1362,6 +1417,7 @@ impl Cpu6502 {
         }
     }
 
+    // Handle interrupt instructions
     fn ex_nmi(&mut self, mm: &mut MemoryMap) {
         self.handle_interrupt(mm, NMI_VECTOR, false);
     }
@@ -1375,42 +1431,58 @@ impl Cpu6502 {
     }
 
     // Start specific Instruction handlers
-    fn ex_brk(&mut self, mm: &mut MemoryMap) {
-        self.handle_interrupt(mm, IRQ_VECTOR, true);
 
-        if self.cycle == 6 {
-            self.reg_p |= I; // Mask interrupts after pushing status to stack
+    // ADC Add with carry A = A + M + C
+    fn ex_adc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
+
+            self.reg_a = (t & 0xff) as u8;
+
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update V flag
+            stat_v!(self.reg_p, self.reg_a, self.value);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
         }
     }
 
-    fn ex_clc(&mut self) {
-        self.reg_p &= !C;
-        self.cycle = 1;
+    // AND A = A & M
+    fn ex_and(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_a = self.value & self.reg_a;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
     }
 
-    fn ex_cld(&mut self) {
-        self.reg_p &= !D;
-        self.cycle = 1;
-    }
+    // ASL Arithmetic Shift Left
+    fn ex_asl(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
 
-    fn ex_cli(&mut self) {
-        self.reg_p &= !I;
-        self.cycle = 1;
-    }
+        if self.cycle == 1 {
+            let t = self.value << 1;
 
-    fn ex_sec(&mut self) {
-        self.reg_p |= C;
-        self.cycle = 1;
-    }
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.write_u8(mm, self.addr as usize, t);
+            }
 
-    fn ex_sed(&mut self) {
-        self.reg_p |= D;
-        self.cycle = 1;
-    }
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
 
-    fn ex_sei(&mut self) {
-        self.reg_p |= I;
-        self.cycle = 1;
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
     }
 
     fn ex_bcc(&mut self, mm: &mut MemoryMap) {
@@ -1446,6 +1518,20 @@ impl Cpu6502 {
             } else {
                 self.cycle = 1;
             }
+        }
+    }
+
+    fn ex_bit(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value & self.reg_a;
+
+            update_status!(self.reg_p, (t == 0), Z);
+
+            update_status!(self.reg_p, (self.value & 0x40) == 0x40, V);
+
+            update_status!(self.reg_p, (self.value & 0x80) == 0x80, N);
         }
     }
 
@@ -1485,6 +1571,14 @@ impl Cpu6502 {
         }
     }
 
+    fn ex_brk(&mut self, mm: &mut MemoryMap) {
+        self.handle_interrupt(mm, IRQ_VECTOR, true);
+
+        if self.cycle == 6 {
+            self.reg_p |= I; // Mask interrupts after pushing status to stack
+        }
+    }
+
     fn ex_bvc(&mut self, mm: &mut MemoryMap) {
         self.handle_branch(mm);
 
@@ -1509,62 +1603,180 @@ impl Cpu6502 {
         }
     }
 
-    // RTI Return from interrupt
-    fn ex_rti(&mut self, mm: &mut MemoryMap) {
-        let s = self.reg_s as usize + 0x100;
+    fn ex_clc(&mut self) {
+        self.reg_p &= !C;
+        self.cycle = 1;
+    }
 
-        match self.cycle {
-            2 => {
-                self.cycle += 1;
-            }
-            3 => {
-                self.reg_s = self.reg_s.wrapping_add(1);
-                self.cycle += 1;
-            }
-            4 => {
-                self.reg_p = self.read_u8(mm, s);
-                self.reg_s = self.reg_s.wrapping_add(1);
-                self.cycle += 1;
-            }
-            5 => {
-                self.reg_pc = self.read_u8(mm, s) as u16;
-                self.reg_s = self.reg_s.wrapping_add(1);
-                self.cycle += 1;
-            }
-            6 => {
-                self.reg_pc |= (self.read_u8(mm, s) as u16) << 8;
-                self.cycle = 1;
-            }
-            _ => (),
+    fn ex_cld(&mut self) {
+        self.reg_p &= !D;
+        self.cycle = 1;
+    }
+
+    fn ex_cli(&mut self) {
+        self.reg_p &= !I;
+        self.cycle = 1;
+    }
+
+    fn ex_clv(&mut self) {
+        self.reg_p &= !V;
+        self.cycle = V;
+    }
+
+    fn ex_cmp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            // Update C flag
+            update_status!(self.reg_p, self.reg_a >= self.value, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a.wrapping_sub(self.value));
         }
     }
 
-    // RTS Return from subroutine
-    fn ex_rts(&mut self, mm: &mut MemoryMap) {
-        let s = self.reg_s as usize + 0x100;
+    fn ex_cpx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
 
-        match self.cycle {
-            2 => {
-                self.cycle += 1;
-            }
-            3 => {
-                self.reg_s = self.reg_s.wrapping_add(1);
-                self.cycle += 1;
-            }
-            4 => {
-                self.reg_pc = self.read_u8(mm, s) as u16;
-                self.reg_s = self.reg_s.wrapping_add(1);
-                self.cycle += 1;
-            }
-            5 => {
-                self.reg_pc |= (self.read_u8(mm, s) as u16) << 8;
-                self.cycle += 1;
-            }
-            6 => {
-                self.reg_pc = self.reg_pc.wrapping_add(1);
-                self.cycle = 1;
-            }
-            _ => (),
+        if self.cycle == 1 {
+            // Update C flag
+            update_status!(self.reg_p, self.reg_x >= self.value, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_x.wrapping_sub(self.value));
+        }
+    }
+
+    fn ex_cpy(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            // Update C flag
+            update_status!(self.reg_p, self.reg_y >= self.value, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_y.wrapping_sub(self.value));
+        }
+    }
+
+    // DEC Decrement memory
+    fn ex_dec(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value.wrapping_sub(1);
+
+            self.write_u8(mm, self.addr as usize, t);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    // DEX Decrement X
+    fn ex_dex(&mut self) {
+        self.reg_x = self.reg_x.wrapping_sub(1);
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // DEY Decrement Y
+    fn ex_dey(&mut self) {
+        self.reg_y = self.reg_y.wrapping_sub(1);
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_y);
+    }
+
+    // EOR A = A ^ M
+    fn ex_eor(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_a = self.value ^ self.reg_a;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // INC Increment memory
+    fn ex_inc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value.wrapping_add(1);
+
+            self.write_u8(mm, self.addr as usize, t);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    // INX Increment X
+    fn ex_inx(&mut self) {
+        self.reg_x = self.reg_x.wrapping_add(1);
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_x);
+    }
+
+    // INY Increment Y
+    fn ex_iny(&mut self) {
+        self.reg_y = self.reg_y.wrapping_add(1);
+        self.cycle = 1;
+
+        // Update N and Z flags
+        stat_nz!(self.reg_p, self.reg_y);
+    }
+
+    // JMP Jump to address
+    fn ex_jmp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        let pc = self.reg_pc as usize;
+        let ptr = self.ptr as usize;
+        let addr = self.addr as usize;
+
+        match m {
+            AddressMode::Abs => match self.cycle {
+                2 => {
+                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.reg_pc = ((self.read_u8(mm, pc) as u16) << 8) | self.addr;
+                    self.cycle = 1;
+                }
+                _ => (),
+            },
+            AddressMode::Ind => match self.cycle {
+                2 => {
+                    self.ptr = self.read_u8(mm, pc);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                3 => {
+                    self.addr = (self.read_u8(mm, pc) as u16) << 8;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.reg_pc = self.read_u8(mm, addr | ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.reg_pc |= (self.read_u8(mm, addr | ptr) as u16) << 8;
+                    self.cycle = 1;
+                }
+                _ => (),
+            },
+            _ => panic!("Invalid mode: {:?}", m),
         }
     }
 
@@ -1600,6 +1812,84 @@ impl Cpu6502 {
                 self.cycle = 1;
             }
             _ => (),
+        }
+    }
+
+    // LDA Load to A
+    fn ex_lda(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_a = self.value;
+
+            //            info!(
+            //                "LDA: Computed ptr: {:04x} -> addr: {:04x} -> val: {:02x}",
+            //                self.ptr, self.addr, self.value
+            //            );
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // LDX Load to X
+    fn ex_ldx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_x = self.value;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_x);
+        }
+    }
+
+    // LDY Load to Y
+    fn ex_ldy(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_y = self.value;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_y);
+        }
+    }
+
+    // LSR Logical Shift Right
+    fn ex_lsr(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value >> 1;
+
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.write_u8(mm, self.addr as usize, t);
+            }
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 1) == 1, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    fn ex_nop(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+    }
+
+    // ORA A = A | M
+    fn ex_ora(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            self.reg_a = self.value | self.reg_a;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
         }
     }
 
@@ -1678,139 +1968,6 @@ impl Cpu6502 {
         }
     }
 
-    // JMP Jump to address
-    fn ex_jmp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        let pc = self.reg_pc as usize;
-        let ptr = self.ptr as usize;
-        let addr = self.addr as usize;
-
-        match m {
-            AddressMode::Abs => match self.cycle {
-                2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
-                    self.reg_pc = self.reg_pc.wrapping_add(1);
-                    self.cycle += 1;
-                }
-                3 => {
-                    self.reg_pc = ((self.read_u8(mm, pc) as u16) << 8) | self.addr;
-                    self.cycle = 1;
-                }
-                _ => (),
-            },
-            AddressMode::Ind => match self.cycle {
-                2 => {
-                    self.ptr = self.read_u8(mm, pc);
-                    self.reg_pc = self.reg_pc.wrapping_add(1);
-                    self.cycle += 1;
-                }
-                3 => {
-                    self.addr = (self.read_u8(mm, pc) as u16) << 8;
-                    self.reg_pc = self.reg_pc.wrapping_add(1);
-                    self.cycle += 1;
-                }
-                4 => {
-                    self.reg_pc = self.read_u8(mm, addr | ptr) as u16;
-                    self.ptr = self.ptr.wrapping_add(1);
-                    self.cycle += 1;
-                }
-                5 => {
-                    self.reg_pc |= (self.read_u8(mm, addr | ptr) as u16) << 8;
-                    self.cycle = 1;
-                }
-                _ => (),
-            },
-            _ => panic!("Invalid mode: {:?}", m),
-        }
-    }
-
-    // DEC Decrement memory
-    fn ex_dec(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read_modify_write(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.value.wrapping_sub(1);
-
-            self.write_u8(mm, self.addr as usize, t);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, t);
-        }
-    }
-
-    // DEX Decrement X
-    fn ex_dex(&mut self) {
-        self.reg_x = self.reg_x.wrapping_sub(1);
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_x);
-    }
-
-    // DEY Decrement Y
-    fn ex_dey(&mut self) {
-        self.reg_y = self.reg_y.wrapping_sub(1);
-        self.cycle = 1;
-
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_y);
-    }
-
-    // INC Increment memory
-    fn ex_inc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read_modify_write(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.value.wrapping_add(1);
-
-            self.write_u8(mm, self.addr as usize, t);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, t);
-        }
-    }
-
-    // ASL Arithmetic Shift Left
-    fn ex_asl(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read_modify_write(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.value << 1;
-
-            if let AddressMode::Imp = m {
-                self.reg_a = t;
-            } else {
-                self.write_u8(mm, self.addr as usize, t);
-            }
-
-            // Update C flag
-            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, t);
-        }
-    }
-
-    // LSR Logical Shift Right
-    fn ex_lsr(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read_modify_write(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.value >> 1;
-
-            if let AddressMode::Imp = m {
-                self.reg_a = t;
-            } else {
-                self.write_u8(mm, self.addr as usize, t);
-            }
-
-            // Update C flag
-            update_status!(self.reg_p, (self.value & 1) == 1, C);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, t);
-        }
-    }
-
     // ROL Rotate Left
     fn ex_rol(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         self.handle_read_modify_write(mm, m);
@@ -1861,22 +2018,118 @@ impl Cpu6502 {
         }
     }
 
-    // INX Increment X
-    fn ex_inx(&mut self) {
-        self.reg_x = self.reg_x.wrapping_add(1);
-        self.cycle = 1;
+    // RTI Return from interrupt
+    fn ex_rti(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
 
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_x);
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_p = self.read_u8(mm, s);
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            5 => {
+                self.reg_pc = self.read_u8(mm, s) as u16;
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            6 => {
+                self.reg_pc |= (self.read_u8(mm, s) as u16) << 8;
+                self.cycle = 1;
+            }
+            _ => (),
+        }
     }
 
-    // INY Increment Y
-    fn ex_iny(&mut self) {
-        self.reg_y = self.reg_y.wrapping_add(1);
-        self.cycle = 1;
+    // RTS Return from subroutine
+    fn ex_rts(&mut self, mm: &mut MemoryMap) {
+        let s = self.reg_s as usize + 0x100;
 
-        // Update N and Z flags
-        stat_nz!(self.reg_p, self.reg_y);
+        match self.cycle {
+            2 => {
+                self.cycle += 1;
+            }
+            3 => {
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            4 => {
+                self.reg_pc = self.read_u8(mm, s) as u16;
+                self.reg_s = self.reg_s.wrapping_add(1);
+                self.cycle += 1;
+            }
+            5 => {
+                self.reg_pc |= (self.read_u8(mm, s) as u16) << 8;
+                self.cycle += 1;
+            }
+            6 => {
+                self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle = 1;
+            }
+            _ => (),
+        }
+    }
+
+    fn ex_sbc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read(mm, m);
+
+        if self.cycle == 1 {
+            let t = (self.reg_a as u16)
+                .wrapping_sub(self.value as u16)
+                .wrapping_sub(1)
+                .wrapping_add((self.reg_p & C == C) as u16);
+
+            self.reg_a = (t & 0xff) as u8;
+
+            // Update C flag
+            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
+
+            // Update V flag
+            stat_v!(self.reg_p, self.reg_a, self.value);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    fn ex_sec(&mut self) {
+        self.reg_p |= C;
+        self.cycle = 1;
+    }
+
+    fn ex_sed(&mut self) {
+        self.reg_p |= D;
+        self.cycle = 1;
+    }
+
+    fn ex_sei(&mut self) {
+        self.reg_p |= I;
+        self.cycle = 1;
+    }
+
+    // STA Store A to memory
+    fn ex_sta(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.value = self.reg_a;
+        self.handle_write(mm, m);
+    }
+
+    // STX Store X to memory
+    fn ex_stx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.value = self.reg_x;
+        self.handle_write(mm, m);
+    }
+
+    // STY Store Y to memory
+    fn ex_sty(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.value = self.reg_y;
+        self.handle_write(mm, m);
     }
 
     // TAX Transfer A to X
@@ -1930,179 +2183,7 @@ impl Cpu6502 {
         stat_nz!(self.reg_p, self.reg_a);
     }
 
-    // LDA Load to A
-    fn ex_lda(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_a = self.value;
-
-            //            info!(
-            //                "LDA: Computed ptr: {:04x} -> addr: {:04x} -> val: {:02x}",
-            //                self.ptr, self.addr, self.value
-            //            );
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    // LDX Load to X
-    fn ex_ldx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_x = self.value;
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_x);
-        }
-    }
-
-    // LDY Load to Y
-    fn ex_ldy(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_y = self.value;
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_y);
-        }
-    }
-
-    // EOR A = A ^ M
-    fn ex_eor(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_a = self.value ^ self.reg_a;
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    // AND A = A & M
-    fn ex_and(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_a = self.value & self.reg_a;
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    // ORA A = A | M
-    fn ex_ora(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            self.reg_a = self.value | self.reg_a;
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    // ADC Add with carry A = A + M + C
-    fn ex_adc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
-
-            self.reg_a = (t & 0xff) as u8;
-
-            // Update C flag
-            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
-
-            // Update V flag
-            stat_v!(self.reg_p, self.reg_a, self.value);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    fn ex_sbc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            let t = (self.reg_a as u16)
-                .wrapping_sub(self.value as u16)
-                .wrapping_sub(1)
-                .wrapping_add((self.reg_p & C == C) as u16);
-
-            self.reg_a = (t & 0xff) as u8;
-
-            // Update C flag
-            update_status!(self.reg_p, (t & 0x100) == 0x100, C);
-
-            // Update V flag
-            stat_v!(self.reg_p, self.reg_a, self.value);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a);
-        }
-    }
-
-    fn ex_cmp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            // Update C flag
-            update_status!(self.reg_p, self.reg_a >= self.value, C);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_a.wrapping_sub(self.value));
-        }
-    }
-
-    fn ex_cpx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            // Update C flag
-            update_status!(self.reg_p, self.reg_x >= self.value, C);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_x.wrapping_sub(self.value));
-        }
-    }
-
-    fn ex_cpy(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            // Update C flag
-            update_status!(self.reg_p, self.reg_y >= self.value, C);
-
-            // Update N and Z flags
-            stat_nz!(self.reg_p, self.reg_y.wrapping_sub(self.value));
-        }
-    }
-
-    fn ex_bit(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-
-        if self.cycle == 1 {
-            let t = self.value & self.reg_a;
-
-            update_status!(self.reg_p, (t == 0), Z);
-
-            update_status!(self.reg_p, (self.value & 0x40) == 0x40, V);
-
-            update_status!(self.reg_p, (self.value & 0x80) == 0x80, N);
-        }
-    }
-
-    fn ex_nop(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.handle_read(mm, m);
-    }
-
+    // Unusual instructions implementations
     fn ex_lax(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         self.handle_read(mm, m);
 
@@ -2135,24 +2216,6 @@ impl Cpu6502 {
     fn ex_sax(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
         self.value = self.reg_a & self.reg_x;
-        self.handle_write(mm, m);
-    }
-
-    // STA Store A to memory
-    fn ex_sta(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.value = self.reg_a;
-        self.handle_write(mm, m);
-    }
-
-    // STX Store X to memory
-    fn ex_stx(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.value = self.reg_x;
-        self.handle_write(mm, m);
-    }
-
-    // STY Store Y to memory
-    fn ex_sty(&mut self, mm: &mut MemoryMap, m: AddressMode) {
-        self.value = self.reg_y;
         self.handle_write(mm, m);
     }
 }
