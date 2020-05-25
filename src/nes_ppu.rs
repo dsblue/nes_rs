@@ -242,6 +242,10 @@ impl Ppu2c02 {
 
         self.count += 1;
     }
+
+    fn read_u8(&self, mm: &mut MemoryMap) -> u8 {
+        0
+    }
 }
 
 impl std::fmt::Display for Ppu2c02 {

@@ -1,11 +1,16 @@
 #[macro_use]
 extern crate log;
-
+use log::error;
+use pixels::{wgpu::Surface, Error, Pixels, SurfaceTexture};
 use std::collections::VecDeque;
 use std::env;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
+use winit::dpi::LogicalSize;
+use winit::event::{Event, VirtualKeyCode};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
 
 mod nes_2a03;
 mod nes_mem;
@@ -17,7 +22,9 @@ use nes_mem::MemoryMap;
 use nes_ppu::Ppu2c02;
 use nes_rom::Rom;
 
-use nes_ppu::Event;
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
+const BOX_SIZE: i16 = 64;
 
 fn usage(app: &String) {
     println!("Usage: {} filename", app);
@@ -45,15 +52,33 @@ fn main() {
     run(rom);
 }
 
-fn run(rom: Rom) {
+fn run(rom: Rom) -> Result<(), Error> {
+    let event_loop = EventLoop::new();
+    let window = {
+        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+        WindowBuilder::new()
+            .with_title("RUSTicle")
+            .with_inner_size(size)
+            .with_min_inner_size(size)
+            .build(&event_loop)
+            .unwrap()
+    };
+    let mut hidpi_factor = window.scale_factor();
+
+    let mut pixels = {
+        let surface = Surface::create(&window);
+        let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, surface);
+        Pixels::new(WIDTH, HEIGHT, surface_texture)?
+    };
+
     let mut mm = MemoryMap::new(&rom);
-    let mut events: VecDeque<Event> = VecDeque::new();
+    let mut events: VecDeque<nes_ppu::Event> = VecDeque::new();
     let mut cpu = Cpu6502::new();
     let mut ppu = Ppu2c02::new();
 
     cpu.power_on_reset(&mm);
     ppu.power_on_reset();
-    events.push_front(Event::Reset);
+    events.push_front(nes_ppu::Event::Reset);
 
     loop {
         cpu.tick(&mut mm, &mut events);
@@ -69,7 +94,7 @@ fn run(rom: Rom) {
         // Handle any generated events
         while let Some(e) = events.pop_back() {
             match e {
-                Event::Reset => {
+                nes_ppu::Event::Reset => {
                     cpu.reset(&mm);
                     ppu.reset();
                 }
