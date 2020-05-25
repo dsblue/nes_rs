@@ -391,6 +391,10 @@ impl Cpu6502 {
                     self.stack_as_string(mm),
                 );
 
+                if self.reg_pc == 0x8e14 {
+                    println!("{}", self.dump_ram(mm, 0x00, 20));
+                }
+
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
@@ -443,6 +447,9 @@ impl Cpu6502 {
                 Nop(m) => self.ex_nop(mm, m),
 
                 Lsr(m) => self.ex_lsr(mm, m),
+                Asl(m) => self.ex_asl(mm, m),
+                Ror(m) => self.ex_ror(mm, m),
+                Rol(m) => self.ex_rol(mm, m),
 
                 Bcc => self.ex_bcc(mm),
                 Bcs => self.ex_bcs(mm),
@@ -795,6 +802,29 @@ impl Cpu6502 {
         )
     }
 
+    fn dump_ram(&self, mm: &mut MemoryMap, addr: usize, len: u16) -> String {
+        let mut s = String::from("");
+        let mut addr = addr;
+
+        for _ in 0..len {
+            s = format!(
+                "{}{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}\n",
+                s,
+                addr,
+                self.read_u8(mm, addr + 0),
+                self.read_u8(mm, addr + 1),
+                self.read_u8(mm, addr + 2),
+                self.read_u8(mm, addr + 3),
+                self.read_u8(mm, addr + 4),
+                self.read_u8(mm, addr + 5),
+                self.read_u8(mm, addr + 6),
+                self.read_u8(mm, addr + 7)
+            );
+            addr += 8;
+        }
+        s
+    }
+
     fn status_as_string(&self) -> String {
         format!(
             "[{}{}..{}{}{}{}]",
@@ -1036,6 +1066,7 @@ impl Cpu6502 {
                 }
                 5 => {
                     // This MAY overflow, but ignore for now
+                    // TODO: Handle variable clock cycles
                     self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
@@ -1052,17 +1083,17 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.ptr = self.read_u8(mm, ptr);
-                    self.ptr = self.ptr.wrapping_add(self.reg_y);
+                    let t = self.read_u8(mm, ptr);
+                    self.addr = t.wrapping_add(self.reg_y) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.addr = self.read_u8(mm, ptr) as u16;
+                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
                 5 => {
                     // This MAY overflow, but ignore for now
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
+                    // TODO: Handle variable clock cycles
                     self.cycle += 1;
                 }
                 6 => {
@@ -1289,19 +1320,21 @@ impl Cpu6502 {
 
     fn handle_interrupt(&mut self, mm: &mut MemoryMap, vector: usize, set_b: bool) {
         let s = self.reg_s as usize + 0x100;
+        let addr_prev = self.addr_prev as usize;
 
         match self.cycle {
             2 => {
+                self.addr_prev = self.reg_pc.wrapping_sub(1); // Save the current PC
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
             }
             3 => {
-                self.write_u8(mm, s, (self.reg_pc >> 8) as u8);
+                self.write_u8(mm, s, (addr_prev >> 8) as u8);
                 self.reg_s = self.reg_s.wrapping_sub(1);
                 self.cycle += 1;
             }
             4 => {
-                self.write_u8(mm, s, (self.reg_pc & 0xff) as u8);
+                self.write_u8(mm, s, (addr_prev & 0xff) as u8);
                 self.reg_s = self.reg_s.wrapping_sub(1);
                 self.cycle += 1;
             }
@@ -1335,7 +1368,7 @@ impl Cpu6502 {
     fn ex_irq(&mut self, mm: &mut MemoryMap) {
         self.handle_interrupt(mm, IRQ_VECTOR, false);
 
-        if self.cycle == 5 {
+        if self.cycle == 6 {
             self.reg_p |= I; // Mask interrupts after pushing status to stack
         }
     }
@@ -1344,7 +1377,7 @@ impl Cpu6502 {
     fn ex_brk(&mut self, mm: &mut MemoryMap) {
         self.handle_interrupt(mm, IRQ_VECTOR, true);
 
-        if self.cycle == 5 {
+        if self.cycle == 6 {
             self.reg_p |= I; // Mask interrupts after pushing status to stack
         }
     }
@@ -1521,7 +1554,7 @@ impl Cpu6502 {
                 self.cycle += 1;
             }
             4 => {
-                self.write_u8(mm, s, (addr_prev >> 8 & 0xff) as u8);
+                self.write_u8(mm, s, (addr_prev >> 8) as u8);
                 self.reg_s = self.reg_s.wrapping_sub(1);
                 self.cycle += 1;
             }
@@ -1705,12 +1738,83 @@ impl Cpu6502 {
         }
     }
 
+    // ASL Arithmetic Shift Left
+    fn ex_asl(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value << 1;
+
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.write_u8(mm, self.addr as usize, t);
+            }
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
     // LSR Logical Shift Right
     fn ex_lsr(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         self.handle_read_modify_write(mm, m);
 
         if self.cycle == 1 {
             let t = self.value >> 1;
+
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.write_u8(mm, self.addr as usize, t);
+            }
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 1) == 1, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    // ROL Rotate Left
+    fn ex_rol(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let mut t = self.value << 1;
+
+            if (self.reg_p & C) == C {
+                t |= 1;
+            }
+
+            if let AddressMode::Imp = m {
+                self.reg_a = t;
+            } else {
+                self.write_u8(mm, self.addr as usize, t);
+            }
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, t);
+        }
+    }
+
+    // ROR Rotate Right
+    fn ex_ror(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let mut t = self.value >> 1;
+
+            if (self.reg_p & C) == C {
+                t |= 0x80;
+            }
 
             if let AddressMode::Imp = m {
                 self.reg_a = t;
@@ -1802,6 +1906,11 @@ impl Cpu6502 {
         if self.cycle == 1 {
             self.reg_a = self.value;
 
+            //            info!(
+            //                "LDA: Computed ptr: {:04x} -> addr: {:04x} -> val: {:02x}",
+            //                self.ptr, self.addr, self.value
+            //            );
+
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
         }
@@ -1891,7 +2000,10 @@ impl Cpu6502 {
         self.handle_read(mm, m);
 
         if self.cycle == 1 {
-            let t = self.reg_a as u16 - self.value as u16 - 1 + (self.reg_p & C == C) as u16;
+            let t = (self.reg_a as u16)
+                .wrapping_sub(self.value as u16)
+                .wrapping_sub(1)
+                .wrapping_add((self.reg_p & C == C) as u16);
 
             self.reg_a = (t & 0xff) as u8;
 
