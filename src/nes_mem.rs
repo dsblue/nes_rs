@@ -68,7 +68,8 @@ impl<'a> fmt::Debug for Region {
 }
 
 pub struct MemoryMap {
-    regions: Vec<Region>,
+    prg_regions: Vec<Region>,
+    chr_regions: Vec<Region>,
     pub ppu: Ppu2c02Interface,
 }
 
@@ -81,7 +82,8 @@ impl<'a> fmt::Debug for MemoryMap {
 impl<'a> MemoryMap {
     pub fn new(rom: &Rom) -> MemoryMap {
         let mut mm = MemoryMap {
-            regions: Vec::new(),
+            prg_regions: Vec::new(),
+            chr_regions: Vec::new(),
             ppu: Ppu2c02Interface::new(),
         };
 
@@ -91,14 +93,14 @@ impl<'a> MemoryMap {
                 // NROM
                 match rom.prg_rom.len() {
                     0x4000 => {
-                        mm.regions.push(Region {
+                        mm.prg_regions.push(Region {
                             start: 0x8000,
                             size: 0x4000,
                             region: Box::new(RegionType::Rom {
                                 data: rom.prg_rom.to_vec(),
                             }),
                         });
-                        mm.regions.push(Region {
+                        mm.prg_regions.push(Region {
                             start: 0xc000,
                             size: 0x4000,
                             region: Box::new(RegionType::Rom {
@@ -107,7 +109,7 @@ impl<'a> MemoryMap {
                         });
                     }
                     0x8000 => {
-                        mm.regions.push(Region {
+                        mm.prg_regions.push(Region {
                             start: 0x8000,
                             size: 0x8000,
                             region: Box::new(RegionType::Rom {
@@ -117,6 +119,14 @@ impl<'a> MemoryMap {
                     }
                     _ => println!("Unsupported PRG size {}", rom.prg_rom.len()),
                 }
+
+                mm.chr_regions.push(Region {
+                    start: 0x0000,
+                    size: 0x2000,
+                    region: Box::new(RegionType::Rom {
+                        data: rom.chr_rom.to_vec(),
+                    }),
+                });
             }
             4 => {
                 // MMC3 Mapper
@@ -130,7 +140,7 @@ impl<'a> MemoryMap {
     }
 
     pub fn cpu_read_u8(&self, address: usize) -> u8 {
-        for r in &self.regions {
+        for r in &self.prg_regions {
             if address >= r.start && address < r.start + r.size {
                 return r.region.read_u8(address - r.start);
             }
@@ -140,7 +150,26 @@ impl<'a> MemoryMap {
     }
 
     pub fn cpu_write_u8(&mut self, address: usize, val: u8) {
-        for r in &mut self.regions {
+        for r in &mut self.prg_regions {
+            if address >= r.start && address < r.start + r.size {
+                return r.region.write_u8(address - r.start, val);
+            }
+        }
+        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
+    }
+
+    pub fn ppu_read_u8(&self, address: usize) -> u8 {
+        for r in &self.chr_regions {
+            if address >= r.start && address < r.start + r.size {
+                return r.region.read_u8(address - r.start);
+            }
+        }
+        error!("PPU Memory address not mapped: {:04x}", address);
+        0
+    }
+
+    pub fn ppu_write_u8(&mut self, address: usize, val: u8) {
+        for r in &mut self.chr_regions {
             if address >= r.start && address < r.start + r.size {
                 return r.region.write_u8(address - r.start, val);
             }

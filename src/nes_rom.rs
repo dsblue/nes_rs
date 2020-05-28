@@ -23,7 +23,7 @@ pub struct Rom {
     is_pal: bool,
 
     pub prg_rom: Vec<u8>,
-    chr_rom: Vec<u8>,
+    pub chr_rom: Vec<u8>,
 }
 
 impl Rom {

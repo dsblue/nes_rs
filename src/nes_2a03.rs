@@ -338,7 +338,7 @@ impl Cpu6502 {
         }
     }
 
-    pub fn reset(&mut self, mm: &MemoryMap) {
+    pub fn reset(&mut self, mm: &mut MemoryMap) {
         info!("Reset CPU");
 
         self.reg_p |= I;
@@ -350,7 +350,7 @@ impl Cpu6502 {
             | self.read_u8(mm, RESET_VECTOR) as u16;
     }
 
-    pub fn power_on_reset(&mut self, mm: &MemoryMap) {
+    pub fn power_on_reset(&mut self, mm: &mut MemoryMap) {
         info!("Power Cycle CPU");
 
         self.reg_a = 0;
@@ -392,11 +392,7 @@ impl Cpu6502 {
                     self.inst = Cpu6502::decode_op(op);
                 }
 
-                println!("{:>8}  {}", self.count, self.disassemble_current(mm));
-
-                if self.reg_pc == 0x8e14 {
-                    println!("{}", self.dump_memory(mm, 0x00, 20));
-                }
+                //println!("{:>8}  {}", self.count, self.disassemble_current(mm));
 
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
@@ -489,7 +485,7 @@ impl Cpu6502 {
         self.count += 1;
     }
 
-    fn read_u8(&self, mm: &MemoryMap, addr: usize) -> u8 {
+    fn read_u8(&self, mm: &mut MemoryMap, addr: usize) -> u8 {
         match addr {
             0x0000..=0x1fff => {
                 // 2KB internal RAM mirrored x 4
@@ -824,6 +820,7 @@ impl Cpu6502 {
         s
     }
 
+    #[allow(dead_code)]
     fn disassemble_current(&self, mm: &mut MemoryMap) -> String {
         // Disassembly info for debug
         let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
