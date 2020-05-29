@@ -23,7 +23,7 @@ use nes_mem::MemoryMap;
 use nes_ppu::Ppu2c02;
 use nes_rom::Rom;
 
-const WIDTH: u32 = 320;
+const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
 
 fn usage(app: &String) {
@@ -110,7 +110,6 @@ fn run(rom: Rom) -> Result<(), Error> {
                 }
             }
         }
-
         thread::sleep(Duration::from_micros(1));
     }
 }

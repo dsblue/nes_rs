@@ -23,7 +23,7 @@ use std::path::Path;
 const SCANLINES_PER_FRAME: usize = 262;
 const CYCLES_PER_SCANLINE: usize = 341;
 
-const VISIBLE_WIDTH: usize = 320;
+const VISIBLE_WIDTH: usize = 256;
 const VISIBLE_HIGHT: usize = 240;
 
 const PPUCTRL_V: u8 = 0x80;
@@ -201,7 +201,7 @@ impl std::default::Default for Nametable {
 //    data: [u8; 0x1f],
 //}
 
-type Palette = [u8; 0x1f];
+type Palette = [u8; 0x20];
 
 //impl std::fmt::Debug for Palette {
 //    fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -333,13 +333,13 @@ impl Ppu2c02 {
             0x0000..=0x0fff => mm.ppu_write_u8(addr, val),
             0x1000..=0x1fff => mm.ppu_write_u8(addr, val),
             0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2400..=0x27ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2800..=0x2bff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2c00..=0x2fff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
+            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
+            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
             0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3400..=0x37ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3800..=0x3bff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3c00..=0x3eff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
+            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
+            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
                     self.palette[0] = val;
@@ -356,13 +356,13 @@ impl Ppu2c02 {
             0x0000..=0x0fff => mm.ppu_read_u8(addr),
             0x1000..=0x1fff => mm.ppu_read_u8(addr),
             0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2400..=0x27ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2800..=0x2bff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2c00..=0x2fff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
+            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
+            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize],
             0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3400..=0x37ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3800..=0x3bff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3c00..=0x3eff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
+            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
+            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize],
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
                     self.palette[0]
@@ -463,6 +463,8 @@ impl Ppu2c02 {
             }
         }
 
+        let mut render = false;
+
         match self.scanline {
             0 => {
                 if self.cycle == 0 {
@@ -479,46 +481,8 @@ impl Ppu2c02 {
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
                         mm.ppu.nmi = true;
                     }
-                    let palette: [[u8; 4]; 4] = [
-                        [0xff, 0x00, 0x00, 0xff],
-                        [0x00, 0xff, 0x00, 0xff],
-                        [0x00, 0x00, 0xff, 0xff],
-                        [0x80, 0x80, 0x80, 0xff],
-                    ];
 
-                    let table = (self.reg_ppuctrl & 0x3) as usize;
-                    let table = 0;
-                    //for row in 0..30 {
-                    //for col in 0..32 {
-                    //print!("{:02x} ", self.nametables[table]._data[row * 32 + col]);
-                    //}
-                    //print!("\n");
-                    //}
-
-                    let table = 0x1000;
-                    for (i, pixel) in self.frame.data.chunks_exact_mut(4).enumerate() {
-                        let row = (i / VISIBLE_WIDTH);
-                        let col = (i % VISIBLE_WIDTH);
-
-                        let name_i = (col / 8) + (32 * (row / 8));
-                        let name = self.nametables[0]._data[name_i] as usize;
-                        //let name = col / 8;
-                        let line = row & 0x7;
-                        let bp1 = mm.ppu_read_u8(table + (name << 4) + 0 + line) as usize;
-                        let bp2 = mm.ppu_read_u8(table + (name << 4) + 8 + line) as usize;
-                        let index =
-                            (bp1 >> (0x7 - (0x7 & i)) & 1) + ((bp2 >> (0x7 - (0x7 & i)) & 1) << 1);
-
-                        //let attrib = table + 0x3c0 +
-                        //let index = self.palette[index] as usize;
-                        let rgba = self.ntsc[index * 0x12];
-
-                        //let rgba = [self.nametables[1]._data[i & 0x3ff], 0x48, 0xe8, 0xff];
-                        //let t = mm.ppu_read_u8(0x1000 + i);
-                        //let rgba = [t, 0x48, 0xe8, 0xff];
-
-                        pixel.copy_from_slice(rgba.as_slice());
-                    }
+                    render = true;
 
                     e.push_back(Event::VBlank);
                 }
@@ -532,6 +496,57 @@ impl Ppu2c02 {
                 }
             }
             _ => (),
+        }
+
+        if render {
+            let nt = (self.reg_ppuctrl & 0b11) as usize;
+            let pattern = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_B) == PPUCTRL_B) as usize;
+
+            for (i, pixel) in self.frame.data.chunks_exact_mut(4).enumerate() {
+                let row = i / VISIBLE_WIDTH;
+                let col = i % VISIBLE_WIDTH;
+
+                //let table = (self.reg_ppuctrl & 0x3) as usize;
+                //let table = 0;
+                //for row in 0..30 {
+                //for col in 0..32 {
+                //print!("{:02x} ", self.nametables[table]._data[row * 32 + col]);
+                //}
+                //print!("\n");
+                //}
+
+                let name_i = (col / 8) + (32 * (row / 8));
+                let name = self.nametables[nt]._data[name_i] as usize;
+                let line = row & 0x7;
+                let bp1 = mm.ppu_read_u8(pattern + (name << 4) + 0 + line) as usize;
+                let bp2 = mm.ppu_read_u8(pattern + (name << 4) + 8 + line) as usize;
+                let index = (bp1 >> (0x7 - (0x7 & i)) & 1) + ((bp2 >> (0x7 - (0x7 & i)) & 1) << 1);
+
+                let attrib = self.nametables[nt]._data[0x3c0 + (col / 32) + (row / 32) * 8];
+                let quad = match (row & 0x10, col & 0x10) {
+                    (0, 0) => 0,
+                    (0, 0x10) => 2,
+                    (0x10, 0) => 4,
+                    (0x10, 0x10) => 6,
+                    _ => 0,
+                };
+                let attrib = (((attrib >> quad) & 0b11) << 2) as usize;
+                let index = attrib | index as usize;
+                let index = if (0b11 & index) == 0 {
+                    self.palette[0]
+                } else {
+                    self.palette[0x1f & index]
+                } as usize;
+                let rgba = self.ntsc[index];
+
+                //let rgba = self.ntsc[index * 0x8];
+
+                //let rgba = [self.nametables[1]._data[i & 0x3ff], 0x48, 0xe8, 0xff];
+                //let t = mm.ppu_read_u8(0x1000 + i);
+                //let rgba = [t, 0x48, 0xe8, 0xff];
+
+                pixel.copy_from_slice(rgba.as_slice());
+            }
         }
 
         if self.scanline == SCANLINES_PER_FRAME {
