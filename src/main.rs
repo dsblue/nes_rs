@@ -111,6 +111,6 @@ fn run(rom: Rom) -> Result<(), Error> {
             }
         }
 
-        //        thread::sleep(Duration::from_micros(1));
+        thread::sleep(Duration::from_micros(1));
     }
 }

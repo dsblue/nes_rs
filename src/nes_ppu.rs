@@ -11,9 +11,14 @@
  *
  */
 use crate::nes_mem::MemoryMap;
-use rgb::RGB8;
+use rgb::ComponentSlice;
+use rgb::RGBA8;
 use std::collections::VecDeque;
 use std::default::Default;
+use std::fs::File;
+use std::io;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 const SCANLINES_PER_FRAME: usize = 262;
 const CYCLES_PER_SCANLINE: usize = 341;
@@ -191,21 +196,24 @@ impl std::default::Default for Nametable {
     }
 }
 
-struct Palette {
-    _data: [u8; 0x20],
-}
+//#[derive(Debug, Default)]
+//struct Palette {
+//    data: [u8; 0x1f],
+//}
 
-impl std::fmt::Debug for Palette {
-    fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        Ok(())
-    }
-}
+type Palette = [u8; 0x1f];
 
-impl std::default::Default for Palette {
-    fn default() -> Self {
-        Palette { _data: [0u8; 0x20] }
-    }
-}
+//impl std::fmt::Debug for Palette {
+//    fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//        Ok(())
+//    }
+//}
+
+//impl std::default::Default for Palette {
+//    fn default() -> Self {
+//        Palette { _data: [0u8; 0x20] }
+//    }
+//}
 
 type Oam = [u8; 256];
 
@@ -238,6 +246,7 @@ pub struct Ppu2c02 {
     oam: Oam,
 
     frame: Frame,
+    ntsc: Vec<RGBA8>,
 }
 
 impl std::fmt::Debug for Ppu2c02 {
@@ -274,13 +283,35 @@ impl std::default::Default for Ppu2c02 {
             palette: Palette::default(),
             oam: [0u8; 256],
             frame: Frame::default(),
+            ntsc: Vec::with_capacity(256),
         }
     }
 }
 
 impl Ppu2c02 {
     pub fn new() -> Ppu2c02 {
-        Ppu2c02::default()
+        let mut p = Ppu2c02::default();
+
+        let mut file = match File::open("default.pal") {
+            Err(file) => panic!("No palette file {}", file),
+            Ok(file) => file,
+        };
+
+        let mut buf = Vec::new();
+
+        if let Err(_) = file.read_to_end(&mut buf) {
+            panic!("Could not read palette data")
+        }
+
+        for (_, c) in buf.chunks_exact(3).enumerate() {
+            p.ntsc.push(RGBA8 {
+                r: c[0],
+                g: c[1],
+                b: c[2],
+                a: 0xff,
+            });
+        }
+        p
     }
 
     pub fn reset(&mut self) {
@@ -302,14 +333,20 @@ impl Ppu2c02 {
             0x0000..=0x0fff => mm.ppu_write_u8(addr, val),
             0x1000..=0x1fff => mm.ppu_write_u8(addr, val),
             0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
+            0x2400..=0x27ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x2800..=0x2bff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x2c00..=0x2fff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
             0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
-            0x3f00..=0x3fff => self.palette._data[(addr & 0x1f) as usize] = val,
+            0x3400..=0x37ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x3800..=0x3bff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x3c00..=0x3eff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x3f00..=0x3fff => {
+                if (0b11 & addr) == 0 {
+                    self.palette[0] = val;
+                } else {
+                    self.palette[0x1f & addr] = val;
+                }
+            }
             _ => error!("PPU Memory write out-if-range: {:04x}", addr),
         }
     }
@@ -319,14 +356,20 @@ impl Ppu2c02 {
             0x0000..=0x0fff => mm.ppu_read_u8(addr),
             0x1000..=0x1fff => mm.ppu_read_u8(addr),
             0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize],
+            0x2400..=0x27ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x2800..=0x2bff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x2c00..=0x2fff => self.nametables[0]._data[(addr & 0x3ff) as usize],
             0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize],
-            0x3f00..=0x3fff => self.palette._data[(addr & 0x1f) as usize],
+            0x3400..=0x37ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x3800..=0x3bff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x3c00..=0x3eff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x3f00..=0x3fff => {
+                if (0b11 & addr) == 0 {
+                    self.palette[0]
+                } else {
+                    self.palette[0x1f & addr]
+                }
+            }
             _ => {
                 error!("PPU Memory write out-if-range: {:04x}", addr);
                 0xff
@@ -442,34 +485,39 @@ impl Ppu2c02 {
                         [0x00, 0x00, 0xff, 0xff],
                         [0x80, 0x80, 0x80, 0xff],
                     ];
-                    let table = 0x0000;
 
+                    let table = (self.reg_ppuctrl & 0x3) as usize;
+                    let table = 0;
+                    //for row in 0..30 {
+                    //for col in 0..32 {
+                    //print!("{:02x} ", self.nametables[table]._data[row * 32 + col]);
+                    //}
+                    //print!("\n");
+                    //}
+
+                    let table = 0x1000;
                     for (i, pixel) in self.frame.data.chunks_exact_mut(4).enumerate() {
                         let row = (i / VISIBLE_WIDTH);
                         let col = (i % VISIBLE_WIDTH);
 
                         let name_i = (col / 8) + (32 * (row / 8));
                         let name = self.nametables[0]._data[name_i] as usize;
-                        //let tile = i >> 3;
+                        //let name = col / 8;
                         let line = row & 0x7;
-                        let bp1 = mm.ppu_read_u8(table + name << 4 + 0 + line) as usize;
-                        let bp2 = mm.ppu_read_u8(table + name << 4 + 8 + line) as usize;
-                        let index = (bp1 >> (0x7 & i) & 1) + ((bp2 >> (0x7 & i) & 1) << 1);
-                        let rgba = palette[index];
+                        let bp1 = mm.ppu_read_u8(table + (name << 4) + 0 + line) as usize;
+                        let bp2 = mm.ppu_read_u8(table + (name << 4) + 8 + line) as usize;
+                        let index =
+                            (bp1 >> (0x7 - (0x7 & i)) & 1) + ((bp2 >> (0x7 - (0x7 & i)) & 1) << 1);
 
-                        //let rgba = if i > 100 {
-                        //[mm.ppu_read_u8(i), 0x48, 0xe8, 0xff]
-                        //    [0x5e, 0x48, 0xe8, 0xff]
-                        //} else {
-                        //    [0x48, 0xb2, 0xe8, 0xff]
-                        //};
-                        //let rgba = [(i & 0xff) as u8, 0x48, 0xe8, 0xff];
+                        //let attrib = table + 0x3c0 +
+                        //let index = self.palette[index] as usize;
+                        let rgba = self.ntsc[index * 0x12];
 
                         //let rgba = [self.nametables[1]._data[i & 0x3ff], 0x48, 0xe8, 0xff];
                         //let t = mm.ppu_read_u8(0x1000 + i);
                         //let rgba = [t, 0x48, 0xe8, 0xff];
 
-                        pixel.copy_from_slice(&rgba);
+                        pixel.copy_from_slice(rgba.as_slice());
                     }
 
                     e.push_back(Event::VBlank);
