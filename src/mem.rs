@@ -1,4 +1,4 @@
-use crate::nes_ppu::Ppu2c02Interface;
+use crate::ppu::Ppu2c02Interface;
 //use crate::Event;
 use crate::Rom;
 //use std::collections::VecDeque;

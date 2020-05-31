@@ -18,7 +18,7 @@
 use std::collections::VecDeque;
 use std::string::String;
 
-use crate::nes_ppu::Event;
+use crate::ppu::Event;
 use crate::MemoryMap;
 
 const N: u8 = 0b1000_0000; // Negitive

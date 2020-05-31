@@ -10,7 +10,7 @@
  *
  *
  */
-use crate::nes_mem::MemoryMap;
+use crate::mem::MemoryMap;
 use rgb::ComponentSlice;
 use rgb::RGBA8;
 use std::collections::VecDeque;
@@ -277,7 +277,7 @@ impl std::default::Default for Ppu2c02 {
             palette: Palette::default(),
             oam: [0u8; 256],
             frame: Frame::default(),
-            ntsc: Vec::with_capacity(256),
+            ntsc: Vec::with_capacity(64),
         }
     }
 }
@@ -526,6 +526,28 @@ impl Ppu2c02 {
 
                 pixel.copy_from_slice(rgba.as_slice());
             }
+
+            //     print!("Frame: {}\n", self.count);
+            //     let nt = (self.reg_ppuctrl & 0b11) as usize;
+            //     for row in 0..8 {
+            //         print!("|");
+            //         for col in 0..8 {
+            //             print!(
+            //                 "{}{}|",
+            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 0 & 0x3,
+            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 2 & 0x3,
+            //             );
+            //         }
+            //         print!("\n|");
+            //         for col in 0..8 {
+            //             print!(
+            //                 "{}{}|",
+            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 4 & 0x3,
+            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 6 & 0x3,
+            //             );
+            //         }
+            //         print!("\n");
+            //     }
         }
 
         if self.scanline == SCANLINES_PER_FRAME {

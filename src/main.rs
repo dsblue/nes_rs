@@ -12,15 +12,15 @@ use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
-mod nes_2a03;
-mod nes_mem;
-mod nes_ppu;
-mod nes_rom;
+mod mem;
+mod ppu;
+mod rom;
+mod rp2a03;
 
-use nes_2a03::Cpu6502;
-use nes_mem::MemoryMap;
-use nes_ppu::Ppu2c02;
-use nes_rom::Rom;
+use mem::MemoryMap;
+use ppu::Ppu2c02;
+use rom::Rom;
+use rp2a03::Cpu6502;
 
 const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
@@ -72,13 +72,13 @@ fn run(rom: Rom) -> Result<(), Error> {
     };
 
     let mut mm = MemoryMap::new(&rom);
-    let mut events: VecDeque<nes_ppu::Event> = VecDeque::new();
+    let mut events: VecDeque<ppu::Event> = VecDeque::new();
     let mut cpu = Cpu6502::new();
     let mut ppu = Ppu2c02::new();
 
     cpu.power_on_reset(&mut mm);
     ppu.power_on_reset();
-    events.push_front(nes_ppu::Event::Reset);
+    events.push_front(ppu::Event::Reset);
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -102,11 +102,11 @@ fn run(rom: Rom) -> Result<(), Error> {
         // Handle any generated events
         while let Some(e) = events.pop_back() {
             match e {
-                nes_ppu::Event::Reset => {
+                ppu::Event::Reset => {
                     cpu.reset(&mut mm);
                     ppu.reset();
                 }
-                nes_ppu::Event::VBlank => {
+                ppu::Event::VBlank => {
                     let f = pixels.get_frame();
 
                     f.clone_from_slice(ppu.current_frame());
