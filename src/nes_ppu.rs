@@ -16,9 +16,7 @@ use rgb::RGBA8;
 use std::collections::VecDeque;
 use std::default::Default;
 use std::fs::File;
-use std::io;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::io::Read;
 
 const SCANLINES_PER_FRAME: usize = 262;
 const CYCLES_PER_SCANLINE: usize = 341;
@@ -27,15 +25,13 @@ const VISIBLE_WIDTH: usize = 256;
 const VISIBLE_HIGHT: usize = 240;
 
 const PPUCTRL_V: u8 = 0x80;
-const PPUCTRL_P: u8 = 0x40;
-const PPUCTRL_H: u8 = 0x20;
+const _PPUCTRL_P: u8 = 0x40;
+const _PPUCTRL_H: u8 = 0x20;
 const PPUCTRL_B: u8 = 0x10;
-const PPUCTRL_S: u8 = 0x08;
+const _PPUCTRL_S: u8 = 0x08;
 const PPUCTRL_I: u8 = 0x04;
 
 const PPUSTATUS_VBLANK: u8 = 0x80;
-
-static PALETTE: [(u8, u8, u8); 2] = [(0, 0, 0), (0, 0, 0)];
 
 #[derive(Debug)]
 pub enum Event {
@@ -237,7 +233,6 @@ pub struct Ppu2c02 {
     got_ppuscroll: bool,
     got_ppuaddr: bool,
 
-    state: PpuState,
     count: u64,
 
     nametables: [Nametable; 4],
@@ -272,7 +267,6 @@ impl std::default::Default for Ppu2c02 {
             cycle: 0,
             scroll_x: 0,
             scroll_y: 0,
-            state: PpuState::default(),
             count: 0,
             nametables: [
                 Nametable::default(),
@@ -506,15 +500,6 @@ impl Ppu2c02 {
                 let row = i / VISIBLE_WIDTH;
                 let col = i % VISIBLE_WIDTH;
 
-                //let table = (self.reg_ppuctrl & 0x3) as usize;
-                //let table = 0;
-                //for row in 0..30 {
-                //for col in 0..32 {
-                //print!("{:02x} ", self.nametables[table]._data[row * 32 + col]);
-                //}
-                //print!("\n");
-                //}
-
                 let name_i = (col / 8) + (32 * (row / 8));
                 let name = self.nametables[nt]._data[name_i] as usize;
                 let line = row & 0x7;
@@ -538,12 +523,6 @@ impl Ppu2c02 {
                     self.palette[0x1f & index]
                 } as usize;
                 let rgba = self.ntsc[index];
-
-                //let rgba = self.ntsc[index * 0x8];
-
-                //let rgba = [self.nametables[1]._data[i & 0x3ff], 0x48, 0xe8, 0xff];
-                //let t = mm.ppu_read_u8(0x1000 + i);
-                //let rgba = [t, 0x48, 0xe8, 0xff];
 
                 pixel.copy_from_slice(rgba.as_slice());
             }

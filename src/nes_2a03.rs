@@ -855,7 +855,7 @@ impl Cpu6502 {
         )
     }
 
-    fn dump_memory(&self, mm: &mut MemoryMap, addr: usize, len: u16) -> String {
+    fn _dump_memory(&self, mm: &mut MemoryMap, addr: usize, len: u16) -> String {
         let mut s = String::from("");
         let mut addr = addr;
 
