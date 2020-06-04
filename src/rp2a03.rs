@@ -23,6 +23,7 @@ use crate::MemoryMap;
 
 const N: u8 = 0b1000_0000; // Negitive
 const V: u8 = 0b0100_0000; // Overflow
+const B: u8 = 0b0001_0000; // Break instruction
 const D: u8 = 0b0000_1000; // Decimal
 const I: u8 = 0b0000_0100; // Interrupt Disable
 const Z: u8 = 0b0000_0010; // Zero
@@ -80,7 +81,7 @@ macro_rules! stat_nz {
     };
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum AddressMode {
     Imp,
     Imm,
@@ -133,7 +134,7 @@ impl AddressMode {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum Instruction {
     Adc(AddressMode),
     And(AddressMode),
@@ -286,7 +287,6 @@ impl Instruction {
     }
 }
 
-//#[derive(Debug)]
 pub struct Cpu6502 {
     reg_a: u8,   // Accumulator
     reg_x: u8,   // Index X
@@ -308,7 +308,7 @@ pub struct Cpu6502 {
     value: u8,
     cycle: u8,
 
-    internal_ram: [u8; 2 * 1024],
+    internal_ram: [u8; 2 * 0x400],
 }
 
 impl Cpu6502 {
@@ -326,7 +326,7 @@ impl Cpu6502 {
             inst: Instruction::Brk,
 
             nmi_pending: false,
-            irq_level: false,
+            irq_level: true,
 
             addr: 0,
             addr_prev: 0,
@@ -497,7 +497,7 @@ impl Cpu6502 {
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
-                error!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
+                warn!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
                 0
             }
             _ => mm.cpu_read_u8(addr),
@@ -516,7 +516,7 @@ impl Cpu6502 {
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
-                error!(
+                warn!(
                     "APU Not implemented: Write APU:0x{:04x}: 0x{:02x}",
                     (addr - 0x4000),
                     val
@@ -1394,7 +1394,7 @@ impl Cpu6502 {
             5 => {
                 let mut p = self.reg_p & 0b11001111;
                 if set_b {
-                    p |= 0b00110000; // Set 'B' Flag
+                    p |= 0b00100000 | B; // Set 'B' Flag
                 } else {
                     p |= 0b00100000;
                 }
@@ -2215,6 +2215,18 @@ impl Cpu6502 {
         self.value = self.reg_a & self.reg_x;
         self.handle_write(mm, m);
     }
+
+    #[cfg(test)]
+    fn set_internal_ram(&mut self, m: Vec<(usize, u8)>) {
+        for (addr, val) in m {
+            self.internal_ram[addr] = val;
+        }
+    }
+
+    #[cfg(test)]
+    fn write_internal_ram(&mut self, addr: usize, mem: &[u8]) {
+        self.internal_ram[addr..addr + mem.len()].clone_from_slice(mem);
+    }
 }
 
 impl std::fmt::Display for Cpu6502 {
@@ -2230,5 +2242,218 @@ impl std::fmt::Display for Cpu6502 {
         write!(f, "PC:   {:04x}\nSTATUS: {:02x}\n", self.reg_pc, self.reg_p)?;
         write!(f, "================================================")?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Cpu6502;
+    use super::*;
+    use crate::mem::MemoryMap;
+
+    #[derive(Eq, PartialEq)]
+    struct TestState {
+        status: String,
+        a: u8,
+        x: u8,
+        y: u8,
+        sp: u16,
+        pc: u16,
+    }
+
+    impl std::default::Default for TestState {
+        fn default() -> Self {
+            TestState {
+                a: 0,
+                x: 0,
+                y: 0,
+                sp: 0x100,
+                pc: 0x200,
+                status: String::from("nv.bDizc"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for TestState {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(
+                f,
+                "PC:{:04x} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
+                self.pc, self.a, self.x, self.y, self.sp, self.status
+            )?;
+            Ok(())
+        }
+    }
+
+    impl std::fmt::Debug for TestState {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(
+                f,
+                "PC:{:04x} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
+                self.pc, self.a, self.x, self.y, self.sp, self.status
+            )?;
+            Ok(())
+        }
+    }
+
+    fn set_state(cpu: &mut Cpu6502, s: TestState) {
+        cpu.reg_a = s.a;
+        cpu.reg_x = s.x;
+        cpu.reg_y = s.y;
+        cpu.reg_s = (s.sp & 0xff) as u8;
+        cpu.reg_pc = s.pc;
+
+        for c in s.status.chars() {
+            match c {
+                'N' => cpu.reg_p |= N,
+                'n' => cpu.reg_p &= !N,
+                'V' => cpu.reg_p |= V,
+                'v' => cpu.reg_p &= !V,
+                'B' => cpu.reg_p |= B,
+                'b' => cpu.reg_p &= !B,
+                'D' => cpu.reg_p |= D,
+                'd' => cpu.reg_p &= !D,
+                'I' => cpu.reg_p |= I,
+                'i' => cpu.reg_p &= !I,
+                'Z' => cpu.reg_p |= Z,
+                'z' => cpu.reg_p &= !Z,
+                'C' => cpu.reg_p |= C,
+                'c' => cpu.reg_p &= !C,
+                '.' => (),
+                _ => panic!("Bad test status"),
+            }
+        }
+    }
+
+    fn get_state(cpu: &Cpu6502) -> TestState {
+        let mut status = String::new();
+
+        if cpu.reg_p & N == N {
+            status.push('N');
+        } else {
+            status.push('n');
+        }
+        if cpu.reg_p & V == V {
+            status.push('V');
+        } else {
+            status.push('v');
+        }
+        status.push('.');
+        if cpu.reg_p & B == B {
+            status.push('B');
+        } else {
+            status.push('b');
+        }
+        if cpu.reg_p & D == D {
+            status.push('D');
+        } else {
+            status.push('d');
+        }
+        if cpu.reg_p & I == I {
+            status.push('I');
+        } else {
+            status.push('i');
+        }
+        if cpu.reg_p & Z == Z {
+            status.push('Z');
+        } else {
+            status.push('z');
+        }
+        if cpu.reg_p & C == C {
+            status.push('C');
+        } else {
+            status.push('c');
+        }
+
+        TestState {
+            a: cpu.reg_a,
+            x: cpu.reg_x,
+            y: cpu.reg_y,
+            sp: 0x100 | cpu.reg_s as u16,
+            pc: cpu.reg_pc,
+            status: status,
+        }
+    }
+
+    fn run(cpu: &mut Cpu6502, mm: &mut MemoryMap, clks: usize) {
+        let mut _events = VecDeque::new();
+        for _ in 0..clks {
+            cpu.tick(mm, &mut _events)
+        }
+    }
+
+    #[test]
+    fn reset() {
+        let mut mm = MemoryMap::new_stub();
+        let mut cpu = Cpu6502::new();
+        cpu.reg_a = 0x55u8;
+
+        assert_eq!(cpu.reg_a, 0x55);
+        cpu.reset(&mut mm);
+        assert_eq!(cpu.reg_a, 0x55);
+    }
+
+    #[test]
+    fn power_on_reset() {
+        let mut mm = MemoryMap::new_stub();
+        let mut cpu = Cpu6502::new();
+        cpu.reg_a = 0x55u8;
+
+        assert_eq!(cpu.reg_a, 0x55);
+        cpu.power_on_reset(&mut mm);
+        assert_eq!(cpu.reg_a, 0);
+    }
+
+    #[test]
+    fn test_adc_1() {
+        let mut mm = MemoryMap::new_stub();
+        let mut cpu = Cpu6502::new();
+
+        let testcases = vec![
+            (0, String::from("nv.bDiZc"), 0, String::from("nv.bDiZc"), 0),
+            (
+                0,
+                String::from("nv.bDiZc"),
+                0xff,
+                String::from("Nv.bDizc"),
+                0xff,
+            ),
+            (
+                0xff,
+                String::from("nv.bDiZc"),
+                0,
+                String::from("nv.bDiZC"),
+                0x1,
+            ),
+            (
+                0x11,
+                String::from("nv.bDiZc"),
+                0x33,
+                String::from("nv.bDizc"),
+                0x22,
+            ),
+        ];
+
+        for (start_a, start_s, end_a, end_s, val) in testcases {
+            let init = TestState {
+                pc: 0x200,
+                a: start_a,
+                status: start_s,
+                ..Default::default()
+            };
+
+            let end = TestState {
+                pc: 0x202,
+                a: end_a,
+                status: end_s,
+                ..Default::default()
+            };
+
+            cpu.set_internal_ram(vec![(0x200, 0x69), (0x201, val)]);
+            set_state(&mut cpu, init);
+            run(&mut cpu, &mut mm, 2);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Imm));
+            assert_eq!(end, get_state(&cpu));
+        }
     }
 }

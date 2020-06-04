@@ -176,4 +176,13 @@ impl<'a> MemoryMap {
         }
         error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
     }
+
+    #[cfg(test)]
+    pub fn new_stub() -> Self {
+        MemoryMap {
+            prg_regions: Vec::new(),
+            chr_regions: Vec::new(),
+            ppu: Ppu2c02Interface::new(),
+        }
+    }
 }

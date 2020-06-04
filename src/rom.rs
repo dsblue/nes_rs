@@ -35,7 +35,6 @@ impl Rom {
 
         // Parse the ROM file
         if 0x4e45531a != file.read_u32::<BigEndian>().unwrap() {
-            //println!("File not in iNES format");
             panic!("File not in iNES format");
         }
 
@@ -79,6 +78,23 @@ impl Rom {
             prg_rom,
             chr_rom,
         })
+    }
+}
+
+impl std::default::Default for Rom {
+    fn default() -> Self {
+        Rom {
+            prg_size: 0,
+            chr_size: 0,
+            vert_mirror: false,
+            has_prg_ram: false,
+            has_trainer: false,
+            has_vram: false,
+            mapper: 0,
+            is_pal: false,
+            prg_rom: Vec::new(),
+            chr_rom: Vec::new(),
+        }
     }
 }
 
