@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate log;
-use pixels::{wgpu::Surface, Error, Pixels, SurfaceTexture};
+use pixels::{Error, Pixels, SurfaceTexture};
 use std::collections::VecDeque;
 use std::env;
 use std::path::Path;
@@ -54,11 +54,12 @@ fn main() {
 fn run(rom: Rom) -> Result<(), Error> {
     let event_loop = EventLoop::new();
     let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        let large_size = LogicalSize::new(4.0 * WIDTH as f64, 4.0 * HEIGHT as f64);
+        // Make a scaled up window for testing
+        // TODO: Support HIDPI
+        let size = LogicalSize::new(4.0 * WIDTH as f64, 4.0 * HEIGHT as f64);
         WindowBuilder::new()
             .with_title("NES RS")
-            .with_inner_size(large_size)
+            .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
             .unwrap()
@@ -66,8 +67,7 @@ fn run(rom: Rom) -> Result<(), Error> {
     let _hidpi_factor = window.scale_factor();
 
     let mut pixels = {
-        let surface = Surface::create(&window);
-        let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, surface);
+        let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &window);
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
