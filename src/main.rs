@@ -1,8 +1,10 @@
 #[macro_use]
 extern crate log;
+extern crate clap;
+use clap::{App};
+use read_input::prelude::*;
 use pixels::{Error, Pixels, SurfaceTexture};
 use std::collections::VecDeque;
-use std::env;
 use std::path::Path;
 //use std::thread;
 //use std::time::Duration;
@@ -22,27 +24,27 @@ use ppu::Ppu2c02;
 use rom::Rom;
 use rp2a03::Cpu6502;
 
+use nes_rs::DebugCommand;
+use nes_rs::debug_parse;
+
+
 const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
-
-fn usage(app: &String) {
-    println!("Usage: {} filename", app);
-}
 
 fn main() {
     env_logger::init();
 
-    let args: Vec<String> = env::args().collect();
-
-    info!("Passed arguments: {:?}", args);
-
-    if args.len() != 2 {
-        usage(&args[0]);
-        return;
-    }
+    let matches = App::new("NES Rust")
+        .version("0.1")
+        .about("A simple NES emulator written in Rust")
+        .author("Nathan Palmer")
+        .args_from_usage("-p,--palette=[FILE]    'Load a custom palette file'
+                          -d                     'Enable debug console'
+                          <ROM>                  'ROM file to load")
+        .get_matches();
 
     // Load the contents of the ROM
-    let path = Path::new(&args[1]);
+    let path = Path::new(matches.value_of("ROM").unwrap());
 
     let rom = Rom::from_file(&path).unwrap();
 
@@ -80,6 +82,8 @@ fn run(rom: Rom) -> Result<(), Error> {
     ppu.power_on_reset();
     events.push_front(ppu::Event::Reset);
 
+    let mut run_count :u64 = 0;
+
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
         // dispatched any events. This is ideal for games and similar applications.
@@ -89,10 +93,40 @@ fn run(rom: Rom) -> Result<(), Error> {
         // input, and uses significantly less power/CPU time than ControlFlow::Poll.
         //*control_flow = ControlFlow::Wait;
 
+        while 0 == run_count {
+            // Read debugger input
+            let cmd :String = input()
+                .repeat_msg("> ")
+                .try_get()
+                .expect("Failed to read input");
+
+            match debug_parse(cmd.trim()) {
+                Some(DebugCommand::Quit) => {
+                    *control_flow = ControlFlow::Exit;
+                    break;
+                }
+                Some(DebugCommand::Go) => {
+                    run_count = 100;
+                }
+                Some(DebugCommand::Run(n)) => {
+                    run_count = n;
+                }
+                Some(DebugCommand::BreakPoint(addr)) => {
+                    println!("Adding a break point at: {:#06x}", addr);
+                }
+                Some(DebugCommand::Display) => {
+                    println!("Display a variable");
+                }
+                _ => {}
+            }
+        }
+
         cpu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
-        ppu.tick(&mut mm, &mut events);
+        ppu.tick(&mut mm, &mut events);  
+
+        run_count = run_count.saturating_sub(1);
 
         if mm.ppu.nmi {
             mm.ppu.nmi = false;
