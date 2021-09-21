@@ -3,15 +3,20 @@ name = "nes_rs"
 version = "0.1.0"
 authors = ["nathan"]
 edition = "2018"
+resolver = "2"
 
 [profile.release] 
 debug = true
 
+
 [dependencies]
-log = "0.4.8"
-env_logger = "0.7.1"
-byteorder = "1.3.4"
-winit = "0.24.0"
-winit_input_helper = "0.9"
-pixels = "0.2.0"
-rgb = "0.8.17"
+log = "0.4.14"
+env_logger = "0.9.0"
+byteorder = "1.4.3"
+winit = "0.25.0"
+winit_input_helper = "0.10.0"
+pixels = "0.6.0"
+rgb = "0.8.27"
+clap = "2.33.3"
+read_input = "0.8.6"
+ctrlc = "3.2.0"

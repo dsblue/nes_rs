@@ -2224,7 +2224,7 @@ impl Cpu6502 {
     }
 
     #[cfg(test)]
-    fn write_internal_ram(&mut self, addr: usize, mem: &[u8]) {
+    fn _write_internal_ram(&mut self, addr: usize, mem: &[u8]) {
         self.internal_ram[addr..addr + mem.len()].clone_from_slice(mem);
     }
 }
