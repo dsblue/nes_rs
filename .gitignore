@@ -12,4 +12,10 @@ Cargo.lock
 # VIM
 *.swp
 
+# VisualStudio Code
+.vs/
+
+*.diagsession
+
+*.exe
 *.nes

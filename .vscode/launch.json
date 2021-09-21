@@ -7,11 +7,58 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
-            "program": "${workspaceFolder}/target/debug/nes_rs",
+            "name": "Debug unit tests in library 'nes_rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=nes_rs"
+                ],
+                "filter": {
+                    "name": "nes_rs",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'nes_rs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=nes_rs",
+                    "--package=nes_rs"
+                ],
+                "filter": {
+                    "name": "nes_rs",
+                    "kind": "bin"
+                }
+            },
             "args": ["Super_mario_brothers.nes"],
-            "cwd": "${workspaceFolder}",
-            "env": {"RUST_LOG":"nes_rs"},
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'nes_rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=nes_rs",
+                    "--package=nes_rs"
+                ],
+                "filter": {
+                    "name": "nes_rs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

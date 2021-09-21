@@ -18,6 +18,8 @@ pub fn debug_parse(s :&str) -> Option<DebugCommand> {
     if let Some(a) = token.next() {
         match a.to_lowercase().as_str() {
             "go" => Some(DebugCommand::Go),
+            "quit" => Some(DebugCommand::Quit),
+            "display" => Some(DebugCommand::Display),
             "run" => {
                 if let Some(num) = token.next()
                     .and_then(|x| x.parse::<u64>().ok()) {

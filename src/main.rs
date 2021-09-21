@@ -14,6 +14,9 @@ use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 mod mem;
 mod ppu;
 mod rom;
@@ -73,6 +76,13 @@ fn run(rom: Rom) -> Result<(), Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error installing CTRL-C handler");
+
     let mut mm = MemoryMap::new(&rom);
     let mut events: VecDeque<ppu::Event> = VecDeque::new();
     let mut cpu = Cpu6502::new();
@@ -93,7 +103,7 @@ fn run(rom: Rom) -> Result<(), Error> {
         // input, and uses significantly less power/CPU time than ControlFlow::Poll.
         //*control_flow = ControlFlow::Wait;
 
-        while 0 == run_count {
+        while running.load(Ordering::SeqCst) == false {
             // Read debugger input
             let cmd :String = input()
                 .repeat_msg("> ")
@@ -107,15 +117,19 @@ fn run(rom: Rom) -> Result<(), Error> {
                 }
                 Some(DebugCommand::Go) => {
                     run_count = 100;
+                    running.store(true, Ordering::SeqCst);
                 }
                 Some(DebugCommand::Run(n)) => {
                     run_count = n;
+                    running.store(true, Ordering::SeqCst);
                 }
                 Some(DebugCommand::BreakPoint(addr)) => {
                     println!("Adding a break point at: {:#06x}", addr);
+                    running.store(true, Ordering::SeqCst);
                 }
                 Some(DebugCommand::Display) => {
                     println!("Display a variable");
+                    running.store(true, Ordering::SeqCst);
                 }
                 _ => {}
             }
@@ -124,9 +138,12 @@ fn run(rom: Rom) -> Result<(), Error> {
         cpu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
         ppu.tick(&mut mm, &mut events);
-        ppu.tick(&mut mm, &mut events);  
+        ppu.tick(&mut mm, &mut events);
 
         run_count = run_count.saturating_sub(1);
+        if run_count == 0 {
+            running.store(false, Ordering::SeqCst);
+        }
 
         if mm.ppu.nmi {
             mm.ppu.nmi = false;
@@ -162,7 +179,7 @@ fn run(rom: Rom) -> Result<(), Error> {
                 event: WindowEvent::Resized(size),
                 ..
             } => {
-                pixels.resize(size.width, size.height);
+                pixels.resize_surface(size.width, size.height);
             }
             Event::WindowEvent {
                 event: WindowEvent::KeyboardInput { input, .. },

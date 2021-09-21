@@ -1,0 +1,12 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "native",
+      "name": "nes_rs.exe",
+      "project": "nes_rs.exe",
+      "projectTarget": ""
+    }
+  ]
+}
