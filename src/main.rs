@@ -1,21 +1,21 @@
 #[macro_use]
 extern crate log;
 extern crate clap;
-use clap::{App};
-use read_input::prelude::*;
+use clap::App;
 use pixels::{Error, Pixels, SurfaceTexture};
+use read_input::prelude::*;
 use std::collections::VecDeque;
 use std::path::Path;
-//use std::thread;
-//use std::time::Duration;
+use std::thread;
+use std::time::Duration;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 mod mem;
 mod ppu;
@@ -27,9 +27,8 @@ use ppu::Ppu2c02;
 use rom::Rom;
 use rp2a03::Cpu6502;
 
-use nes_rs::DebugCommand;
 use nes_rs::debug_parse;
-
+use nes_rs::DebugCommand;
 
 const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
@@ -41,9 +40,11 @@ fn main() {
         .version("0.1")
         .about("A simple NES emulator written in Rust")
         .author("Nathan Palmer")
-        .args_from_usage("-p,--palette=[FILE]    'Load a custom palette file'
+        .args_from_usage(
+            "-p,--palette=[FILE]    'Load a custom palette file'
                           -d                     'Enable debug console'
-                          <ROM>                  'ROM file to load")
+                          <ROM>                  'ROM file to load",
+        )
         .get_matches();
 
     // Load the contents of the ROM
@@ -81,7 +82,8 @@ fn run(rom: Rom) -> Result<(), Error> {
 
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
-    }).expect("Error installing CTRL-C handler");
+    })
+    .expect("Error installing CTRL-C handler");
 
     let mut mm = MemoryMap::new(&rom);
     let mut events: VecDeque<ppu::Event> = VecDeque::new();
@@ -92,7 +94,7 @@ fn run(rom: Rom) -> Result<(), Error> {
     ppu.power_on_reset();
     events.push_front(ppu::Event::Reset);
 
-    let mut run_count :u64 = 0;
+    let mut run_count: u64 = 0;
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -103,9 +105,9 @@ fn run(rom: Rom) -> Result<(), Error> {
         // input, and uses significantly less power/CPU time than ControlFlow::Poll.
         //*control_flow = ControlFlow::Wait;
 
-        while running.load(Ordering::SeqCst) == false {
+        while false && running.load(Ordering::SeqCst) == false {
             // Read debugger input
-            let cmd :String = input()
+            let cmd: String = input()
                 .repeat_msg("> ")
                 .try_get()
                 .expect("Failed to read input");
@@ -158,11 +160,7 @@ fn run(rom: Rom) -> Result<(), Error> {
                     ppu.reset();
                 }
                 ppu::Event::VBlank => {
-                    let f = pixels.get_frame();
-
-                    f.clone_from_slice(ppu.current_frame());
-
-                    pixels.render().unwrap();
+                    window.request_redraw();
                 }
             }
         }
@@ -189,21 +187,17 @@ fn run(rom: Rom) -> Result<(), Error> {
                     *control_flow = ControlFlow::Exit;
                 }
             }
-            Event::MainEventsCleared => {
-                // Application update code.
-                // Queue a RedrawRequested event.
-                //
-                // You only need to call this if you've determined that you need to redraw, in
-                // applications which do not always need to. Applications that redraw continuously
-                // can just render here instead.
-                window.request_redraw();
-            }
             Event::RedrawRequested(_) => {
                 // Redraw the application.
                 //
                 // It's preferable for applications that do not render continuously to render in
                 // this event rather than in MainEventsCleared, since rendering in here allows
                 // the program to gracefully handle redraws requested by the OS.
+                let f = pixels.get_frame();
+
+                f.clone_from_slice(ppu.current_frame());
+
+                pixels.render().unwrap();
             }
             _ => (),
         }
