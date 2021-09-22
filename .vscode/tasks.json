@@ -9,6 +9,15 @@
 			],
 			"group": "build",
 			"label": "Rust: cargo build - nes_rs"
+		},
+		{
+			"type": "cargo",
+			"subcommand": "test",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "Rust: cargo test - nes_rs"
 		}
 	]
 }
