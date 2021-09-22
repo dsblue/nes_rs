@@ -83,17 +83,17 @@ macro_rules! stat_nz {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum AddressMode {
-    Imp,
-    Imm,
-    Zp,
-    Zpx,
-    Zpy,
-    Izx,
-    Izy,
-    Abs,
-    Abx,
-    Aby,
-    Ind,
+    Imp, // Implicit
+    Imm, // Immediate
+    Zp,  // Zero Page
+    Zpx, // Zero Page, X indexed
+    Zpy, // Zero Page, Y indexed
+    Izx, // Indirect, X indexed
+    Izy, // Indirect, Y indexed
+    Abs, // Absolute
+    Abx, // Absolute, X
+    Aby, // Absolute, Y
+    Ind, // Indirect    (JMP only)
 }
 
 impl AddressMode {
@@ -948,16 +948,17 @@ impl Cpu6502 {
             },
             AddressMode::Zpx => match self.cycle {
                 2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.ptr = self.read_u8(mm, pc);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.read_u8(mm, addr) + self.reg_x) as u16;
+                    self.addr = self.ptr.wrapping_add(self.reg_x) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr & 0xff);
+                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
                 5 => {
@@ -1109,11 +1110,11 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.ptr = self.read_u8(mm, ptr);
                     self.ptr = self.ptr.wrapping_add(self.reg_x);
                     self.cycle += 1;
                 }
                 4 => {
+                    assert!((ptr & 0xff00) != 0, "Error with izx");
                     self.addr = self.read_u8(mm, ptr) as u16;
                     self.cycle += 1;
                 }
@@ -1145,7 +1146,6 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
-                    // This MAY overflow, but ignore for now
                     // TODO: Handle variable clock cycles
                     self.cycle += 1;
                 }
@@ -1169,32 +1169,34 @@ impl Cpu6502 {
             },
             AddressMode::Zpx => match self.cycle {
                 2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.ptr = self.read_u8(mm, pc);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.read_u8(mm, addr).wrapping_add(self.reg_x)) as u16;
+                    self.addr = self.ptr.wrapping_add(self.reg_x) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr & 0xff);
+                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
                 _ => (),
             },
             AddressMode::Zpy => match self.cycle {
                 2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.ptr = self.read_u8(mm, pc);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.read_u8(mm, addr).wrapping_add(self.reg_y)) as u16;
+                    self.addr = self.ptr.wrapping_add(self.reg_y) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr & 0xff);
+                    assert!((addr & 0xff00) != 0, "Error with zpy");
+                    self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1282,14 +1284,17 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.ptr = self.read_u8(mm, ptr);
+                    self.ptr = self.ptr.wrapping_add(self.reg_x);
                     self.cycle += 1;
                 }
                 4 => {
+                    assert!((ptr & 0xff00) != 0, "Error with izx");
                     self.addr = self.read_u8(mm, ptr) as u16;
                     self.cycle += 1;
                 }
                 5 => {
+                    // This MAY overflow, but ignore for now
+                    // TODO: Handle variable clock cycles
                     self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
                     self.cycle += 1;
                 }
@@ -1315,6 +1320,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    // TODO: Handle variable clock cycles
                     self.cycle += 1;
                 }
                 6 => {
@@ -1337,32 +1343,34 @@ impl Cpu6502 {
             },
             AddressMode::Zpx => match self.cycle {
                 2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.ptr = self.read_u8(mm, pc);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.read_u8(mm, addr).wrapping_add(self.reg_x)) as u16;
+                    self.addr = self.ptr.wrapping_add(self.reg_x) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.write_u8(mm, addr & 0xff, value);
+                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
                 _ => (),
             },
             AddressMode::Zpy => match self.cycle {
                 2 => {
-                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.ptr = self.read_u8(mm, pc);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = (self.read_u8(mm, addr).wrapping_add(self.reg_y)) as u16;
+                    self.addr = self.ptr.wrapping_add(self.reg_y) as u16;
                     self.cycle += 1;
                 }
                 4 => {
-                    self.write_u8(mm, addr & 0xff, value);
+                    assert!((addr & 0xff00) != 0, "Error with zpy");
+                    self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
                 _ => (),
@@ -2259,6 +2267,7 @@ mod test {
         y: u8,
         sp: u16,
         pc: u16,
+        cycle: u8,
     }
 
     impl std::default::Default for TestState {
@@ -2270,6 +2279,7 @@ mod test {
                 sp: 0x100,
                 pc: 0x200,
                 status: String::from("nv.bDizc"),
+                cycle: 1,
             }
         }
     }
@@ -2278,8 +2288,8 @@ mod test {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(
                 f,
-                "PC:{:04x} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
-                self.pc, self.a, self.x, self.y, self.sp, self.status
+                "PC:{:04x} C:{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
+                self.pc, self.cycle, self.a, self.x, self.y, self.sp, self.status
             )?;
             Ok(())
         }
@@ -2289,19 +2299,20 @@ mod test {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(
                 f,
-                "PC:{:04x} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
-                self.pc, self.a, self.x, self.y, self.sp, self.status
+                "PC:{:04x} C:{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} STATUS:{}",
+                self.pc, self.cycle, self.a, self.x, self.y, self.sp, self.status
             )?;
             Ok(())
         }
     }
 
-    fn set_state(cpu: &mut Cpu6502, s: TestState) {
+    fn set_state(cpu: &mut Cpu6502, s: &TestState) {
         cpu.reg_a = s.a;
         cpu.reg_x = s.x;
         cpu.reg_y = s.y;
         cpu.reg_s = (s.sp & 0xff) as u8;
         cpu.reg_pc = s.pc;
+        cpu.cycle = s.cycle;
 
         for c in s.status.chars() {
             match c {
@@ -2372,6 +2383,7 @@ mod test {
             sp: 0x100 | cpu.reg_s as u16,
             pc: cpu.reg_pc,
             status: status,
+            cycle: cpu.cycle,
         }
     }
 
@@ -2405,55 +2417,355 @@ mod test {
     }
 
     #[test]
-    fn test_adc_1() {
+    fn test_adc() {
         let mut mm = MemoryMap::new_stub();
         let mut cpu = Cpu6502::new();
 
         let testcases = vec![
-            (0, String::from("nv.bDiZc"), 0, String::from("nv.bDiZc"), 0),
-            (
-                0,
-                String::from("nv.bDiZc"),
-                0xff,
-                String::from("Nv.bDizc"),
-                0xff,
-            ),
-            (
-                0xff,
-                String::from("nv.bDiZc"),
-                0,
-                String::from("nv.bDiZC"),
-                0x1,
-            ),
-            (
-                0x11,
-                String::from("nv.bDiZc"),
-                0x33,
-                String::from("nv.bDizc"),
-                0x22,
-            ),
+            (0, "nv.bDiZc", 0, "nv.bDiZc", 0),
+            (0, "nv.bDiZc", 0xff, "Nv.bDizc", 0xff),
+            (0xff, "nv.bDiZc", 0, "nv.bDiZC", 0x1),
+            (0x11, "nv.bDiZc", 0x33, "nv.bDizc", 0x22),
+            (0x11, "nv.bDiZC", 0x34, "nv.bDizc", 0x22),
+            (0xff, "nv.bDiZC", 0, "nv.bDiZC", 0),
         ];
 
         for (start_a, start_s, end_a, end_s, val) in testcases {
-            let init = TestState {
+            let desc = format!("{} + {} = {}", start_a, val, end_a);
+
+            let mut init = TestState {
                 pc: 0x200,
                 a: start_a,
-                status: start_s,
+                status: String::from(start_s),
                 ..Default::default()
             };
 
-            let end = TestState {
+            let mut end = TestState {
                 pc: 0x202,
                 a: end_a,
-                status: end_s,
+                status: String::from(end_s),
                 ..Default::default()
             };
 
             cpu.set_internal_ram(vec![(0x200, 0x69), (0x201, val)]);
-            set_state(&mut cpu, init);
+            set_state(&mut cpu, &init);
             run(&mut cpu, &mut mm, 2);
             assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Imm));
-            assert_eq!(end, get_state(&cpu));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![(0x200, 0x65), (0x201, 0x30), (0x30, val)]);
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 3);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Zp));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![(0x200, 0x75), (0x201, 0x30), (0x50, val)]);
+            init.x = 0x20;
+            end.x = 0x20;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 4);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Zpx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![
+                (0x200, 0x6D),
+                (0x201, 0x23),
+                (0x202, 0x01),
+                (0x0123, val),
+            ]);
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 4);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Abs));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![
+                (0x200, 0x7D),
+                (0x201, 0x23),
+                (0x202, 0x01),
+                (0x0143, val),
+            ]);
+            init.x = 0x20;
+            end.x = 0x20;
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 5);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Abx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![
+                (0x200, 0x79),
+                (0x201, 0x23),
+                (0x202, 0x01),
+                (0x0143, val),
+            ]);
+            init.y = 0x20;
+            end.y = 0x20;
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 5);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Aby));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![
+                (0x200, 0x61),
+                (0x201, 0x51),
+                (0x50, 0x23),
+                (0x51, 0x01),
+                (0x0123, val),
+            ]);
+            init.x = 0xff;
+            end.x = 0xff;
+            end.pc = init.pc + 2;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 6);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Izx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            cpu.set_internal_ram(vec![
+                (0x200, 0x71),
+                (0x201, 0x40),
+                (0x40, 0x23),
+                (0x41, 0x01),
+                (0x0122, val),
+            ]);
+            init.y = 0xff;
+            end.y = 0xff;
+            end.pc = init.pc + 2;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 6);
+            assert_eq!(cpu.inst, Instruction::Adc(AddressMode::Izy));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+        }
+    }
+
+    #[test]
+    fn test_sta() {
+        let mut mm = MemoryMap::new_stub();
+
+        let testcases = vec![(0), (1), (0x80), (0xff)];
+
+        for a in testcases {
+            let desc = format!("M = {}", a);
+
+            let mut init = TestState {
+                pc: 0x200,
+                a: a,
+                ..Default::default()
+            };
+
+            let mut end = TestState {
+                a: a,
+                ..Default::default()
+            };
+
+            let mut cpu = Cpu6502::new();
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x85), (0x201, 0x30)]);
+            run(&mut cpu, &mut mm, 3);
+            end.pc = init.pc + 2;
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Zp));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x30]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x95), (0x201, 0x30)]);
+            init.x = 0x20;
+            end.x = 0x20;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 4);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Zpx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x50]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x8D), (0x201, 0x23), (0x202, 0x01)]);
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 4);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Abs));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x0123]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x9D), (0x201, 0x23), (0x202, 0x01)]);
+            init.x = 0x20;
+            end.x = 0x20;
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 5);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Abx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x0143]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x99), (0x201, 0x23), (0x202, 0x01)]);
+            init.y = 0x30;
+            end.y = 0x30;
+            end.pc = init.pc + 3;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 5);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Aby));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x0153]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![
+                (0x200, 0x81),
+                (0x201, 0x51),
+                (0x50, 0x23),
+                (0x51, 0x01),
+            ]);
+            init.x = 0xff;
+            end.x = 0xff;
+            end.pc = init.pc + 2;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 6);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Izx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x0123]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![
+                (0x200, 0x91),
+                (0x201, 0x40),
+                (0x40, 0x23),
+                (0x41, 0x01),
+            ]);
+            init.y = 0xff;
+            end.y = 0xff;
+            end.pc = init.pc + 2;
+            set_state(&mut cpu, &init);
+            run(&mut cpu, &mut mm, 6);
+            assert_eq!(cpu.inst, Instruction::Sta(AddressMode::Izy));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(a, cpu.internal_ram[0x0122]);
+        }
+    }
+
+    #[test]
+    fn test_stx() {
+        let mut mm = MemoryMap::new_stub();
+
+        let testcases = vec![(0), (1), (0x80), (0xff)];
+
+        for x in testcases {
+            let desc = format!("M = {}", x);
+
+            let init = TestState {
+                pc: 0x200,
+                x: x,
+                y: 0x30,
+                ..Default::default()
+            };
+
+            let mut end = TestState {
+                x: x,
+                y: 0x30,
+                ..Default::default()
+            };
+
+            let mut cpu = Cpu6502::new();
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x86), (0x201, 0x30)]);
+            run(&mut cpu, &mut mm, 3);
+            end.pc = init.pc + 2;
+            assert_eq!(cpu.inst, Instruction::Stx(AddressMode::Zp));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(x, cpu.internal_ram[0x30]);
+
+            let mut cpu = Cpu6502::new();
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x96), (0x201, 0x30)]);
+            run(&mut cpu, &mut mm, 4);
+            end.pc = init.pc + 2;
+            assert_eq!(cpu.inst, Instruction::Stx(AddressMode::Zpy));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(x, cpu.internal_ram[0x60]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x8E), (0x201, 0x23), (0x202, 0x01)]);
+            set_state(&mut cpu, &init);
+            end.pc = init.pc + 3;
+            run(&mut cpu, &mut mm, 4);
+            assert_eq!(cpu.inst, Instruction::Stx(AddressMode::Abs));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(x, cpu.internal_ram[0x0123]);
+        }
+    }
+
+    #[test]
+    fn test_asl() {
+        let mut mm = MemoryMap::new_stub();
+
+        let testcases = vec![
+            (0, "nv.bDiZc", 0, "nv.bDiZc"),
+            (1, "nv.bDizc", 2, "nv.bDizc"),
+        ];
+
+        for (val, s1, res, s2) in testcases {
+            let desc = format!("M = {} << 1", val);
+
+            let mut init = TestState {
+                pc: 0x200,
+                x: 0x80,
+                y: 0x30,
+                status: String::from(s1),
+                ..Default::default()
+            };
+
+            let mut end = TestState {
+                x: 0x80,
+                y: 0x30,
+                status: String::from(s2),
+                ..Default::default()
+            };
+
+            let mut cpu = Cpu6502::new();
+            init.a = val;
+            end.a = res;
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x0A)]);
+            run(&mut cpu, &mut mm, 2);
+            end.pc = init.pc + 1;
+            assert_eq!(cpu.inst, Instruction::Asl(AddressMode::Imp));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+
+            let mut cpu = Cpu6502::new();
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x06), (0x201, 0x30), (0x30, val)]);
+            run(&mut cpu, &mut mm, 5);
+            end.pc = init.pc + 2;
+            assert_eq!(cpu.inst, Instruction::Asl(AddressMode::Zp));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(res, cpu.internal_ram[0x30]);
+
+            let mut cpu = Cpu6502::new();
+            set_state(&mut cpu, &init);
+            cpu.set_internal_ram(vec![(0x200, 0x16), (0x201, 0x30)]);
+            run(&mut cpu, &mut mm, 6);
+            end.pc = init.pc + 2;
+            assert_eq!(cpu.inst, Instruction::Asl(AddressMode::Zpx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(res, cpu.internal_ram[0xb0]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x0E), (0x201, 0x23), (0x202, 0x01)]);
+            set_state(&mut cpu, &init);
+            end.pc = init.pc + 3;
+            run(&mut cpu, &mut mm, 6);
+            assert_eq!(cpu.inst, Instruction::Asl(AddressMode::Abs));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(res, cpu.internal_ram[0x0123]);
+
+            let mut cpu = Cpu6502::new();
+            cpu.set_internal_ram(vec![(0x200, 0x1E), (0x201, 0x23), (0x202, 0x01)]);
+            set_state(&mut cpu, &init);
+            end.pc = init.pc + 3;
+            run(&mut cpu, &mut mm, 7);
+            assert_eq!(cpu.inst, Instruction::Asl(AddressMode::Abx));
+            assert_eq!(end, get_state(&cpu), "{:?} {}", cpu.inst, desc);
+            assert_eq!(res, cpu.internal_ram[0x0123]);
         }
     }
 }

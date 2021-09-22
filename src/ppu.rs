@@ -229,6 +229,7 @@ pub struct Ppu2c02 {
     scroll_y: u8,
 
     ppu_addr: u16,
+    ppu_addr_temp: u16,
 
     got_ppuscroll: bool,
     got_ppuaddr: bool,
@@ -262,6 +263,7 @@ impl std::default::Default for Ppu2c02 {
             reg_oamdma: 0,
             scanline: 0,
             ppu_addr: 0,
+            ppu_addr_temp: 0,
             got_ppuaddr: false,
             got_ppuscroll: false,
             cycle: 0,
@@ -392,11 +394,15 @@ impl Ppu2c02 {
                 }
                 (PpuRegisters::PpuAddr, v) => {
                     if self.got_ppuaddr {
-                        self.ppu_addr |= v as u16;
+                        self.ppu_addr = self.ppu_addr_temp | v as u16;
+                        println!(
+                            "{}\t\t{}, PPU ADDR: {:04x}",
+                            self.scanline, self.cycle, self.ppu_addr
+                        );
                     } else {
                         // It could be that this should be stored in a temporary var
                         // until the full address is ready, but I think not.
-                        self.ppu_addr = (0x3f & v as u16) << 8;
+                        self.ppu_addr_temp = (0x3f & v as u16) << 8;
                     }
                     self.got_ppuaddr = !self.got_ppuaddr;
 
@@ -527,37 +533,37 @@ impl Ppu2c02 {
                 pixel.copy_from_slice(rgba.as_slice());
             }
 
-            //     print!("Frame: {}\n", self.count);
-            //     let nt = (self.reg_ppuctrl & 0b11) as usize;
-            //     for row in 0..8 {
-            //         print!("|");
-            //         for col in 0..8 {
-            //             print!(
-            //                 "{}{}|",
-            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 0 & 0x3,
-            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 2 & 0x3,
-            //             );
-            //         }
-            //         print!("\n|");
-            //         for col in 0..8 {
-            //             print!(
-            //                 "{}{}|",
-            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 4 & 0x3,
-            //                 self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 6 & 0x3,
-            //             );
-            //         }
-            //         print!("\n");
-            //     }
-        }
-
-        if self.scanline == SCANLINES_PER_FRAME {
-            self.scanline = 0;
-        } else {
-            self.scanline += 1;
+            if false {
+                print!("Frame: {}\n", self.count);
+                let nt = (self.reg_ppuctrl & 0b11) as usize;
+                for row in 0..8 {
+                    print!("|");
+                    for col in 0..8 {
+                        print!(
+                            "{}{}|",
+                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 0 & 0x3,
+                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 2 & 0x3,
+                        );
+                    }
+                    print!("\n|");
+                    for col in 0..8 {
+                        print!(
+                            "{}{}|",
+                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 4 & 0x3,
+                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 6 & 0x3,
+                        );
+                    }
+                    print!("\n");
+                }
+            }
         }
 
         if self.cycle == CYCLES_PER_SCANLINE {
             self.cycle = 0;
+            self.scanline += 1;
+            if self.scanline == SCANLINES_PER_FRAME {
+                self.scanline = 0;
+            }
         } else {
             self.cycle += 1;
         }
