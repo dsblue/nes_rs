@@ -3,12 +3,13 @@ extern crate log;
 extern crate clap;
 use clap::App;
 use pixels::{Error, Pixels, SurfaceTexture};
-use read_input::prelude::*;
+//use read_input::prelude::*;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
-use winit::dpi::LogicalSize;
+use std::time::Instant;
+use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
@@ -16,6 +17,7 @@ use winit::window::WindowBuilder;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 mod mem;
 mod ppu;
@@ -26,9 +28,6 @@ use mem::MemoryMap;
 use ppu::Ppu2c02;
 use rom::Rom;
 use rp2a03::Cpu6502;
-
-use nes_rs::debug_parse;
-use nes_rs::DebugCommand;
 
 const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
@@ -43,7 +42,7 @@ fn main() {
         .args_from_usage(
             "-p,--palette=[FILE]    'Load a custom palette file'
                           -d                     'Enable debug console'
-                          <ROM>                  'ROM file to load",
+                          <ROM>                  'ROM file to load'",
         )
         .get_matches();
 
@@ -60,110 +59,83 @@ fn main() {
 fn run(rom: Rom) -> Result<(), Error> {
     let event_loop = EventLoop::new();
     let window = {
-        // Make a scaled up window for testing
-        // TODO: Support HIDPI
-        let size = LogicalSize::new(4.0 * WIDTH as f64, 4.0 * HEIGHT as f64);
+        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("NES RS")
+            .with_title("NES RS Emulator Main PPU Window")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
             .unwrap()
     };
-    let _hidpi_factor = window.scale_factor();
 
     let mut pixels = {
         let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &window);
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
+    let scale = 2;
+    window.set_inner_size(PhysicalSize::new(
+        window.inner_size().width * scale, 
+        window.inner_size().height * scale));
+
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
+
+    let frame = Arc::new(Mutex::new(ppu::FrameBuffer::default()));
 
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
     })
     .expect("Error installing CTRL-C handler");
 
-    let mut mm = MemoryMap::new(&rom);
-    let mut events: VecDeque<ppu::Event> = VecDeque::new();
-    let mut cpu = Cpu6502::new();
-    let mut ppu = Ppu2c02::new();
+    let _event_loop_proxy = event_loop.create_proxy();
 
-    cpu.power_on_reset(&mut mm);
-    ppu.power_on_reset();
-    events.push_front(ppu::Event::Reset);
+    {
+        let frame = Arc::clone(&frame);
 
-    let mut run_count: u64 = 0;
+        thread::spawn(move || {
+            let mut mm = MemoryMap::new(&rom);
+            let mut cpu = Cpu6502::new();
+            let mut ppu = Ppu2c02::new();
+
+            ppu.set_framebuffer(frame);
+
+            let mut events: VecDeque<ppu::Event> = VecDeque::new();
+            events.push_front(ppu::Event::Reset);
+
+            cpu.power_on_reset(&mut mm);
+            ppu.power_on_reset();
+
+            loop {
+                for _ in 0..10_000 {
+                    cpu.tick(&mut mm, &mut events);
+                    ppu.tick(&mut mm, &mut events);
+                    ppu.tick(&mut mm, &mut events);
+                    ppu.tick(&mut mm, &mut events);
+
+                    if mm.ppu.nmi {
+                        mm.ppu.nmi = false;
+                        cpu.nmi();
+                    }
+
+                    // Handle any generated events
+                    while let Some(e) = events.pop_back() {
+                        match e {
+                            ppu::Event::Reset => {
+                                cpu.reset(&mut mm);
+                                ppu.reset();
+                            }
+                            ppu::Event::VBlank => {}
+                        }
+                    }
+                }
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+    }
 
     event_loop.run(move |event, _, control_flow| {
-        // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-        // dispatched any events. This is ideal for games and similar applications.
-        *control_flow = ControlFlow::Poll;
-        // ControlFlow::Wait pauses the event loop if no events are available to process.
-        // This is ideal for non-game applications that only update in response to user
-        // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-        //*control_flow = ControlFlow::Wait;
-
-        while false && running.load(Ordering::SeqCst) == false {
-            // Read debugger input
-            let cmd: String = input()
-                .repeat_msg("> ")
-                .try_get()
-                .expect("Failed to read input");
-
-            match debug_parse(cmd.trim()) {
-                Some(DebugCommand::Quit) => {
-                    *control_flow = ControlFlow::Exit;
-                    break;
-                }
-                Some(DebugCommand::Go) => {
-                    run_count = 100;
-                    running.store(true, Ordering::SeqCst);
-                }
-                Some(DebugCommand::Run(n)) => {
-                    run_count = n;
-                    running.store(true, Ordering::SeqCst);
-                }
-                Some(DebugCommand::BreakPoint(addr)) => {
-                    println!("Adding a break point at: {:#06x}", addr);
-                    running.store(true, Ordering::SeqCst);
-                }
-                Some(DebugCommand::Display) => {
-                    println!("Display a variable");
-                    running.store(true, Ordering::SeqCst);
-                }
-                _ => {}
-            }
-        }
-
-        cpu.tick(&mut mm, &mut events);
-        ppu.tick(&mut mm, &mut events);
-        ppu.tick(&mut mm, &mut events);
-        ppu.tick(&mut mm, &mut events);
-
-        run_count = run_count.saturating_sub(1);
-        if run_count == 0 {
-            running.store(false, Ordering::SeqCst);
-        }
-
-        if mm.ppu.nmi {
-            mm.ppu.nmi = false;
-            cpu.nmi();
-        }
-
-        // Handle any generated events
-        while let Some(e) = events.pop_back() {
-            match e {
-                ppu::Event::Reset => {
-                    cpu.reset(&mut mm);
-                    ppu.reset();
-                }
-                ppu::Event::VBlank => {
-                    window.request_redraw();
-                }
-            }
-        }
+        //println!("{:?}", event);
 
         match event {
             Event::WindowEvent {
@@ -174,12 +146,6 @@ fn run(rom: Rom) -> Result<(), Error> {
                 *control_flow = ControlFlow::Exit
             }
             Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                pixels.resize_surface(size.width, size.height);
-            }
-            Event::WindowEvent {
                 event: WindowEvent::KeyboardInput { input, .. },
                 ..
             } => {
@@ -187,17 +153,19 @@ fn run(rom: Rom) -> Result<(), Error> {
                     *control_flow = ControlFlow::Exit;
                 }
             }
-            Event::RedrawRequested(_) => {
-                // Redraw the application.
-                //
-                // It's preferable for applications that do not render continuously to render in
-                // this event rather than in MainEventsCleared, since rendering in here allows
-                // the program to gracefully handle redraws requested by the OS.
-                let f = pixels.get_frame();
+            Event::RedrawEventsCleared => {
+                *control_flow =
+                    ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(33));
 
-                f.clone_from_slice(ppu.current_frame());
+                {
+                    let frame = frame.lock().unwrap();
+                    frame.draw(pixels.get_frame());
+                }
 
                 pixels.render().unwrap();
+            }
+            Event::RedrawRequested(_) => {
+                // May use this later
             }
             _ => (),
         }

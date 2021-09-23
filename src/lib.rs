@@ -1,39 +1,68 @@
 #[allow(dead_code)]
-
 use std::option::Option;
 
-#[derive(Debug,PartialEq,PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub enum DebugCommand {
     Go,
     Run(u64),
     BreakPoint(u32),
     Display,
-    Quit
+    Quit,
 }
 
-pub fn debug_parse(s :&str) -> Option<DebugCommand> {
-
+pub fn debug_parse(s: &str) -> Option<DebugCommand> {
     let mut token = s.split_whitespace();
-    
+
     if let Some(a) = token.next() {
         match a.to_lowercase().as_str() {
             "go" => Some(DebugCommand::Go),
             "quit" => Some(DebugCommand::Quit),
             "display" => Some(DebugCommand::Display),
             "run" => {
-                if let Some(num) = token.next()
-                    .and_then(|x| x.parse::<u64>().ok()) {
-                        Some(DebugCommand::Run(num))
+                if let Some(num) = token.next().and_then(|x| x.parse::<u64>().ok()) {
+                    Some(DebugCommand::Run(num))
                 } else {
                     None
                 }
             }
-            _ => None
+            _ => None,
         }
     } else {
         None
     }
 }
+
+// while false && running.load(Ordering::SeqCst) == false {
+//     // Read debugger input
+//     let cmd: String = input()
+//         .repeat_msg("> ")
+//         .try_get()
+//         .expect("Failed to read input");
+
+//     match debug_parse(cmd.trim()) {
+//         Some(DebugCommand::Quit) => {
+//             *control_flow = ControlFlow::Exit;
+//             break;
+//         }
+//         Some(DebugCommand::Go) => {
+//             run_count = 100;
+//             running.store(true, Ordering::SeqCst);
+//         }
+//         Some(DebugCommand::Run(n)) => {
+//             run_count = n;
+//             running.store(true, Ordering::SeqCst);
+//         }
+//         Some(DebugCommand::BreakPoint(addr)) => {
+//             println!("Adding a break point at: {:#06x}", addr);
+//             running.store(true, Ordering::SeqCst);
+//         }
+//         Some(DebugCommand::Display) => {
+//             println!("Display a variable");
+//             running.store(true, Ordering::SeqCst);
+//         }
+//         _ => {}
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -50,8 +79,5 @@ mod tests {
     }
 
     #[test]
-    fn start_debug() {
-        
-    }
-
+    fn start_debug() {}
 }

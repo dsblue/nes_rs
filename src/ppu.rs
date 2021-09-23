@@ -17,6 +17,7 @@ use std::collections::VecDeque;
 use std::default::Default;
 use std::fs::File;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 
 const SCANLINES_PER_FRAME: usize = 262;
 const CYCLES_PER_SCANLINE: usize = 341;
@@ -156,19 +157,25 @@ impl Ppu2c02Interface {
     }
 }
 
-struct Frame {
+pub struct FrameBuffer {
     data: [u8; (4 * VISIBLE_HIGHT * VISIBLE_WIDTH)],
 }
 
-impl std::fmt::Debug for Frame {
+impl FrameBuffer {
+    pub fn draw(&self, f: &mut [u8]) {
+        f.copy_from_slice(&self.data);
+    }
+}
+
+impl std::fmt::Debug for FrameBuffer {
     fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
         Ok(())
     }
 }
 
-impl std::default::Default for Frame {
+impl std::default::Default for FrameBuffer {
     fn default() -> Self {
-        Frame {
+        FrameBuffer {
             data: [0u8; (4 * VISIBLE_HIGHT * VISIBLE_WIDTH)],
         }
     }
@@ -241,7 +248,7 @@ pub struct Ppu2c02 {
 
     oam: Oam,
 
-    frame: Frame,
+    frame_buffer: Arc<Mutex<FrameBuffer>>,
     ntsc: Vec<RGBA8>,
 }
 
@@ -278,7 +285,7 @@ impl std::default::Default for Ppu2c02 {
             ],
             palette: Palette::default(),
             oam: [0u8; 256],
-            frame: Frame::default(),
+            frame_buffer: Arc::default(),
             ntsc: Vec::with_capacity(64),
         }
     }
@@ -310,6 +317,10 @@ impl Ppu2c02 {
         p
     }
 
+    pub fn set_framebuffer(&mut self, frame_buffer: Arc<Mutex<FrameBuffer>>) {
+        self.frame_buffer = frame_buffer;
+    }
+
     pub fn reset(&mut self) {
         info!("Reset PPU");
         self.count = 0;
@@ -318,10 +329,6 @@ impl Ppu2c02 {
     pub fn power_on_reset(&mut self) {
         info!("Power Cycle PPU");
         self.count = 0;
-    }
-
-    pub fn current_frame(&self) -> &[u8] {
-        &self.frame.data
     }
 
     fn write_u8(&mut self, mm: &mut MemoryMap, addr: usize, val: u8) {
@@ -499,10 +506,12 @@ impl Ppu2c02 {
         }
 
         if render {
+            let mut frame = self.frame_buffer.lock().unwrap();
+
             let nt = (self.reg_ppuctrl & 0b11) as usize;
             let pattern = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_B) == PPUCTRL_B) as usize;
 
-            for (i, pixel) in self.frame.data.chunks_exact_mut(4).enumerate() {
+            for (i, pixel) in frame.data.chunks_exact_mut(4).enumerate() {
                 let row = i / VISIBLE_WIDTH;
                 let col = i % VISIBLE_WIDTH;
 
@@ -569,6 +578,11 @@ impl Ppu2c02 {
         }
 
         self.count += 1;
+    }
+
+    pub fn _draw(&self, f: &mut [u8]) {
+        let frame = self.frame_buffer.lock().unwrap();
+        f.copy_from_slice(&frame.data);
     }
 }
 
