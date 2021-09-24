@@ -75,8 +75,9 @@ fn run(rom: Rom) -> Result<(), Error> {
 
     let scale = 2;
     window.set_inner_size(PhysicalSize::new(
-        window.inner_size().width * scale, 
-        window.inner_size().height * scale));
+        window.inner_size().width * scale,
+        window.inner_size().height * scale,
+    ));
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -91,6 +92,7 @@ fn run(rom: Rom) -> Result<(), Error> {
     let _event_loop_proxy = event_loop.create_proxy();
 
     {
+        let is_running = running.clone();
         let frame = Arc::clone(&frame);
 
         thread::spawn(move || {
@@ -128,6 +130,11 @@ fn run(rom: Rom) -> Result<(), Error> {
                             ppu::Event::VBlank => {}
                         }
                     }
+
+                    if !is_running.load(Ordering::SeqCst) {
+                        println!("CTRL^C, Stopping Emulation");
+                        return;
+                    }
                 }
                 thread::sleep(std::time::Duration::from_millis(10));
             }
@@ -153,19 +160,24 @@ fn run(rom: Rom) -> Result<(), Error> {
                     *control_flow = ControlFlow::Exit;
                 }
             }
+            Event::WindowEvent {
+                event: WindowEvent::Resized(size),
+                ..
+            } => {
+                pixels.resize_surface(size.width, size.height);
+            }
             Event::RedrawEventsCleared => {
-                *control_flow =
-                    ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(33));
+                *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(33));
 
                 {
                     let frame = frame.lock().unwrap();
                     frame.draw(pixels.get_frame());
                 }
-
-                pixels.render().unwrap();
+                window.request_redraw();
             }
             Event::RedrawRequested(_) => {
                 // May use this later
+                pixels.render().unwrap();
             }
             _ => (),
         }
