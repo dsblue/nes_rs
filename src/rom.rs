@@ -100,6 +100,19 @@ impl std::default::Default for Rom {
 
 impl fmt::Display for Rom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Program Size: {}\n", self.prg_size)
+        let mirror = if self.vert_mirror {
+            "VERT Mirror"
+        } else {
+            "HORIZONTAL Mirror"
+        };
+        write!(
+            f,
+            "Program Size:   {:8}\n\
+            Character Size: {:8}\n \
+            Mirror:         {:}\n \
+            Has PRG RAM:    {:?}\n \
+            Mapper:         {}\n",
+            self.prg_size, self.chr_size, mirror, self.has_prg_ram, self.mapper
+        )
     }
 }

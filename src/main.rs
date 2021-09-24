@@ -103,7 +103,7 @@ fn run(rom: Rom) -> Result<(), Error> {
             ppu.set_framebuffer(frame);
 
             let mut events: VecDeque<ppu::Event> = VecDeque::new();
-            events.push_front(ppu::Event::Reset);
+            //events.push_front(ppu::Event::Reset);
 
             cpu.power_on_reset(&mut mm);
             ppu.power_on_reset();
@@ -127,7 +127,7 @@ fn run(rom: Rom) -> Result<(), Error> {
                                 cpu.reset(&mut mm);
                                 ppu.reset();
                             }
-                            ppu::Event::VBlank => {}
+                            _ => {}
                         }
                     }
 

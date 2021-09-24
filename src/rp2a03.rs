@@ -15,6 +15,9 @@
  *
  * Used Opcode names from: http://www.oxyron.de/html/opcodes02.html
  */
+use std::thread::sleep;
+use std::time::Duration;
+
 use std::collections::VecDeque;
 use std::string::String;
 
@@ -295,7 +298,8 @@ pub struct Cpu6502 {
     reg_s: u8,   // Stack pointer
     reg_p: u8,   // Status
 
-    count: u64,
+    inst_count: u64,
+    cycle_count: u64,
 
     inst: Instruction,
 
@@ -321,7 +325,8 @@ impl Cpu6502 {
             reg_p: 0,
             reg_s: 0,
 
-            count: 0,
+            inst_count: 0,
+            cycle_count: 0,
 
             inst: Instruction::Brk,
 
@@ -358,11 +363,15 @@ impl Cpu6502 {
         self.reg_y = 0;
         self.reg_p = 0x34;
 
+        self.reg_p = 0b0010_0100;
+
         self.reg_s = 0xfd;
 
         // Load the reset vector
         self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
             | self.read_u8(mm, RESET_VECTOR) as u16;
+
+        //self.reg_pc = 0xc000;
     }
 
     pub fn _irq(&mut self, level: bool) {
@@ -376,7 +385,14 @@ impl Cpu6502 {
     pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         use Instruction::*;
 
+        //if self.inst_count == 0x100 {
+        //    sleep(Duration::from_secs(1000));
+        //}
+
         match self.cycle {
+            0 => {
+                panic!("Cycle 0 is reserved");
+            }
             1 => {
                 // Check for interrupts
                 if self.nmi_pending {
@@ -392,7 +408,13 @@ impl Cpu6502 {
                     self.inst = Cpu6502::decode_op(op);
                 }
 
-                //println!("{:>8}  {}", self.count, self.disassemble_current(mm));
+                println!(
+                    "{:>8}  {:>8}  {}",
+                    self.cycle_count,
+                    self.inst_count,
+                    self.disassemble_current(mm)
+                );
+                self.inst_count += 1;
 
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
@@ -482,7 +504,7 @@ impl Cpu6502 {
             },
         }
 
-        self.count += 1;
+        self.cycle_count += 1;
     }
 
     fn read_u8(&self, mm: &mut MemoryMap, addr: usize) -> u8 {
@@ -828,7 +850,7 @@ impl Cpu6502 {
 
         let (name, operand, _) = self.inst.info(next_mem);
         format!(
-            "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} SP:{:04x} => {}",
+            "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:04x} => {}",
             self.reg_pc,
             name.to_ascii_uppercase(),
             operand,
@@ -836,6 +858,7 @@ impl Cpu6502 {
             self.reg_a,
             self.reg_x,
             self.reg_y,
+            self.reg_p,
             self.reg_s as u16 + 0x0100,
             self.stack_as_string(mm),
         )
@@ -1588,7 +1611,7 @@ impl Cpu6502 {
         self.handle_branch(mm);
 
         if self.cycle == 4 {
-            if (self.reg_p & Z) == 0 {
+            if (self.reg_p & V) == 0 {
                 self.reg_pc = self.addr;
             } else {
                 self.cycle = 1;
@@ -1625,7 +1648,7 @@ impl Cpu6502 {
 
     fn ex_clv(&mut self) {
         self.reg_p &= !V;
-        self.cycle = V;
+        self.cycle = 1;
     }
 
     fn ex_cmp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
@@ -2239,7 +2262,8 @@ impl Cpu6502 {
 
 impl std::fmt::Display for Cpu6502 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "count: {:08x}\n", self.count)?;
+        write!(f, "instruction count: {:}\n", self.inst_count)?;
+        write!(f, "cycle count: {:}\n", self.cycle_count)?;
         write!(f, "== Current CPU State ===========================\n")?;
         write!(
             f,
