@@ -402,10 +402,6 @@ impl Ppu2c02 {
                 (PpuRegisters::PpuAddr, v) => {
                     if self.got_ppuaddr {
                         self.ppu_addr = self.ppu_addr_temp | v as u16;
-                        println!(
-                            "{}\t\t{}, PPU ADDR: {:04x}",
-                            self.scanline, self.cycle, self.ppu_addr
-                        );
                     } else {
                         // It could be that this should be stored in a temporary var
                         // until the full address is ready, but I think not.

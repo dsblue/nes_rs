@@ -49,15 +49,15 @@ macro_rules! update_status {
 
 // TODO: This can surely be simplified...
 macro_rules! stat_v {
-    ($p:expr, $reg1:expr, $reg2:expr) => {
+    ($p:expr, $reg1:expr, $reg2:expr, $result:expr) => {
         if ($reg1 & 0x80) == 0x80 && ($reg2 & 0x80) == 0x80 {
-            if $reg1.wrapping_add($reg2) & 0x80 == 0 {
+            if $result & 0x80 == 0 {
                 $p |= V;
             } else {
                 $p &= !V;
             }
         } else if ($reg1 & 0x80) == 0 && ($reg2 & 0x80) == 0 {
-            if $reg1.wrapping_add($reg2) & 0x80 == 0x80 {
+            if $result & 0x80 == 0x80 {
                 $p |= V;
             } else {
                 $p &= !V;
@@ -371,7 +371,7 @@ impl Cpu6502 {
         self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
             | self.read_u8(mm, RESET_VECTOR) as u16;
 
-        //self.reg_pc = 0xc000;
+        self.reg_pc = 0xc000;
     }
 
     pub fn _irq(&mut self, level: bool) {
@@ -385,9 +385,9 @@ impl Cpu6502 {
     pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         use Instruction::*;
 
-        //if self.inst_count == 0x100 {
-        //    sleep(Duration::from_secs(1000));
-        //}
+        if self.inst_count == 0x2000 {
+           sleep(Duration::from_secs(1000));
+        }
 
         match self.cycle {
             0 => {
@@ -980,7 +980,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    debug_assert!((addr & 0xff00) == 0, "Error with zpx");
                     self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
@@ -1022,8 +1022,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.addr = self.addr.wrapping_add(self.reg_x as u16);
                     self.addr |= (self.read_u8(mm, pc) as u16) << 8;
+                    self.addr = self.addr.wrapping_add(self.reg_x as u16);
                     self.reg_pc = self.reg_pc.wrapping_add(1);
                     self.cycle += 1;
                 }
@@ -1078,53 +1078,49 @@ impl Cpu6502 {
                 }
                 _ => (),
             },
-            AddressMode::Abx => {
-                match self.cycle {
-                    2 => {
-                        self.addr = self.read_u8(mm, pc) as u16;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    3 => {
-                        self.addr = self.addr + self.reg_x as u16;
-                        self.addr |= (self.read_u8(mm, pc) as u16) << 8;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    4 => {
-                        self.value = self.read_u8(mm, addr);
-                        self.cycle += 1; // TODO: Handle the 4 cycle case
-                    }
-                    5 => {
-                        self.value = self.read_u8(mm, addr);
-                        self.cycle = 1;
-                    }
-                    _ => (),
+            AddressMode::Abx => match self.cycle {
+                2 => {
+                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
                 }
+                3 => {
+                    self.addr |= (self.read_u8(mm, pc) as u16) << 8;
+                    self.addr = self.addr.wrapping_add(self.reg_x as u16);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.read_u8(mm, addr);
+                    self.cycle += 1; // TODO: Handle the 4 cycle case
+                }
+                5 => {
+                    self.value = self.read_u8(mm, addr);
+                    self.cycle = 1;
+                }
+                _ => (),
             }
-            AddressMode::Aby => {
-                match self.cycle {
-                    2 => {
-                        self.addr = self.read_u8(mm, pc) as u16;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    3 => {
-                        self.addr = self.addr + self.reg_y as u16;
-                        self.addr |= (self.read_u8(mm, pc) as u16) << 8;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    4 => {
-                        self.value = self.read_u8(mm, addr);
-                        self.cycle += 1; // TODO: Handle the 4 cycle case
-                    }
-                    5 => {
-                        self.value = self.read_u8(mm, addr);
-                        self.cycle = 1;
-                    }
-                    _ => (),
+            AddressMode::Aby => match self.cycle {
+                2 => {
+                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
                 }
+                3 => {
+                    self.addr |= (self.read_u8(mm, pc) as u16) << 8;
+                    self.addr = self.addr.wrapping_add(self.reg_y as u16);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.read_u8(mm, addr);
+                    self.cycle += 1; // TODO: Handle the 4 cycle case
+                }
+                5 => {
+                    self.value = self.read_u8(mm, addr);
+                    self.cycle = 1;
+                }
+                _ => (),
             }
             AddressMode::Izx => match self.cycle {
                 2 => {
@@ -1137,14 +1133,14 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((ptr & 0xff00) != 0, "Error with izx");
+                    debug_assert!((ptr & 0xff00) == 0, "Error with izx");
                     self.addr = self.read_u8(mm, ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
                     self.cycle += 1;
                 }
                 5 => {
-                    // This MAY overflow, but ignore for now
                     // TODO: Handle variable clock cycles
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
+                    self.addr |= (self.read_u8(mm, ptr) as u16) << 8;
                     self.cycle += 1;
                 }
                 6 => {
@@ -1160,16 +1156,17 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    let t = self.read_u8(mm, ptr);
-                    self.addr = t.wrapping_add(self.reg_y) as u16;
+                    self.addr = self.read_u8(mm, ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
+                    self.addr |= (self.read_u8(mm, ptr) as u16) << 8;
                     self.cycle += 1;
                 }
                 5 => {
                     // TODO: Handle variable clock cycles
+                    self.addr = self.addr.wrapping_add(self.reg_y as u16);
                     self.cycle += 1;
                 }
                 6 => {
@@ -1201,7 +1198,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    debug_assert!((addr & 0xff00) == 0, "Error with zpx");
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1218,7 +1215,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((addr & 0xff00) != 0, "Error with zpy");
+                    debug_assert!((addr & 0xff00) == 0, "Error with zpy");
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1252,53 +1249,49 @@ impl Cpu6502 {
                 }
                 _ => (),
             },
-            AddressMode::Abx => {
-                match self.cycle {
-                    2 => {
-                        self.addr = self.read_u8(mm, pc) as u16;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    3 => {
-                        self.addr = self.addr.wrapping_add(self.reg_x as u16);
-                        self.addr |= (self.read_u8(mm, pc) as u16) << 8;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    4 => {
-                        self.value = self.read_u8(mm, addr); // Value is ignored
-                        self.cycle += 1;
-                    }
-                    5 => {
-                        self.write_u8(mm, addr, value);
-                        self.cycle = 1;
-                    }
-                    _ => (),
+            AddressMode::Abx => match self.cycle {
+                2 => {
+                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
                 }
+                3 => {
+                    self.addr |= (self.read_u8(mm, pc) as u16) << 8;
+                    self.addr = self.addr.wrapping_add(self.reg_x as u16);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.read_u8(mm, addr); // Value is ignored
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.write_u8(mm, addr, value);
+                    self.cycle = 1;
+                }
+                _ => (),
             }
-            AddressMode::Aby => {
-                match self.cycle {
-                    2 => {
-                        self.addr = self.read_u8(mm, pc) as u16;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    3 => {
-                        self.addr = self.addr.wrapping_add(self.reg_y as u16);
-                        self.addr |= (self.read_u8(mm, pc) as u16) << 8;
-                        self.reg_pc = self.reg_pc.wrapping_add(1);
-                        self.cycle += 1;
-                    }
-                    4 => {
-                        self.value = self.read_u8(mm, addr); // Value is ignored
-                        self.cycle += 1;
-                    }
-                    5 => {
-                        self.write_u8(mm, addr, value);
-                        self.cycle = 1;
-                    }
-                    _ => (),
+            AddressMode::Aby => match self.cycle {
+                2 => {
+                    self.addr = self.read_u8(mm, pc) as u16;
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
                 }
+                3 => {
+                    self.addr |= (self.read_u8(mm, pc) as u16) << 8;
+                    self.addr = self.addr.wrapping_add(self.reg_y as u16);
+                    self.reg_pc = self.reg_pc.wrapping_add(1);
+                    self.cycle += 1;
+                }
+                4 => {
+                    self.value = self.read_u8(mm, addr); // Value is ignored
+                    self.cycle += 1;
+                }
+                5 => {
+                    self.write_u8(mm, addr, value);
+                    self.cycle = 1;
+                }
+                _ => (),
             }
             AddressMode::Izx => match self.cycle {
                 2 => {
@@ -1311,14 +1304,14 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((ptr & 0xff00) != 0, "Error with izx");
+                    debug_assert!((ptr & 0xff00) == 0, "Error with izx");
                     self.addr = self.read_u8(mm, ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
                     self.cycle += 1;
                 }
                 5 => {
-                    // This MAY overflow, but ignore for now
                     // TODO: Handle variable clock cycles
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
+                    self.addr |= (self.read_u8(mm, ptr) as u16) << 8;
                     self.cycle += 1;
                 }
                 6 => {
@@ -1334,16 +1327,17 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    let t = self.read_u8(mm, ptr);
-                    self.addr = t.wrapping_add(self.reg_y) as u16;
+                    self.addr = self.read_u8(mm, ptr) as u16;
+                    self.ptr = self.ptr.wrapping_add(1);
                     self.cycle += 1;
                 }
                 4 => {
-                    self.addr |= (self.read_u8(mm, ptr + 1) as u16) << 8;
+                    self.addr |= (self.read_u8(mm, ptr) as u16) << 8;
                     self.cycle += 1;
                 }
                 5 => {
                     // TODO: Handle variable clock cycles
+                    self.addr = self.addr.wrapping_add(self.reg_y as u16);
                     self.cycle += 1;
                 }
                 6 => {
@@ -1375,7 +1369,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((addr & 0xff00) != 0, "Error with zpx");
+                    debug_assert!((addr & 0xff00) == 0, "Error with zpx");
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1392,7 +1386,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    assert!((addr & 0xff00) != 0, "Error with zpy");
+                    debug_assert!((addr & 0xff00) == 0, "Error with zpy");
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1467,13 +1461,13 @@ impl Cpu6502 {
         if self.cycle == 1 {
             let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
 
-            self.reg_a = (t & 0xff) as u8;
-
             // Update C flag
             update_status!(self.reg_p, (t & 0x100) == 0x100, C);
 
             // Update V flag
-            stat_v!(self.reg_p, self.reg_a, self.value);
+            stat_v!(self.reg_p, self.reg_a, self.value, t & 0xff);
+
+            self.reg_a = (t & 0xff) as u8;
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
@@ -1506,7 +1500,7 @@ impl Cpu6502 {
             }
 
             // Update C flag
-            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
+            update_status!(self.reg_p, (self.value & 0x80) == 0x80, C);
 
             // Update N and Z flags
             stat_nz!(self.reg_p, t);
@@ -1850,10 +1844,10 @@ impl Cpu6502 {
         if self.cycle == 1 {
             self.reg_a = self.value;
 
-            //            info!(
-            //                "LDA: Computed ptr: {:04x} -> addr: {:04x} -> val: {:02x}",
-            //                self.ptr, self.addr, self.value
-            //            );
+            println!(
+                "LDA: Computed ptr: {:04x} -> addr: {:04x} -> val: {:02x}",
+                self.ptr, self.addr, self.value
+            );
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
@@ -1989,7 +1983,8 @@ impl Cpu6502 {
                 self.cycle += 1;
             }
             4 => {
-                self.reg_p = self.read_u8(mm, s) & 0b11001111; // Ignore the 'B' Flag
+                //self.reg_p = self.read_u8(mm, s) & 0b11001111; // Ignore the 'B' Flag
+                self.reg_p = self.read_u8(mm, s) & 0b11001111 | 0b00100000; // (Match NESTEST.NES)
                 self.cycle = 1;
             }
             _ => (),
@@ -2014,7 +2009,7 @@ impl Cpu6502 {
             }
 
             // Update C flag
-            update_status!(self.reg_p, (self.value & 0x80) == 1, C);
+            update_status!(self.reg_p, (self.value & 0x80) == 0x80, C);
 
             // Update N and Z flags
             stat_nz!(self.reg_p, t);
@@ -2059,7 +2054,8 @@ impl Cpu6502 {
                 self.cycle += 1;
             }
             4 => {
-                self.reg_p = self.read_u8(mm, s);
+                //self.reg_p = self.read_u8(mm, s);
+                self.reg_p = self.read_u8(mm, s) | 0b00100000;   // MATCH NESTEST
                 self.reg_s = self.reg_s.wrapping_add(1);
                 self.cycle += 1;
             }
@@ -2109,18 +2105,16 @@ impl Cpu6502 {
         self.handle_read(mm, m);
 
         if self.cycle == 1 {
-            let t = (self.reg_a as u16)
-                .wrapping_sub(self.value as u16)
-                .wrapping_sub(1)
-                .wrapping_add((self.reg_p & C == C) as u16);
-
-            self.reg_a = (t & 0xff) as u8;
+            self.value = !self.value;
+            let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
 
             // Update C flag
             update_status!(self.reg_p, (t & 0x100) == 0x100, C);
 
             // Update V flag
-            stat_v!(self.reg_p, self.reg_a, self.value);
+            stat_v!(self.reg_p, self.reg_a, self.value, t & 0xff);
+
+            self.reg_a = (t & 0xff) as u8;
 
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
