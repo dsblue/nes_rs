@@ -123,7 +123,7 @@ fn run(rom: Rom) -> Result<(), Error> {
                     // Handle any generated events
                     while let Some(e) = events.pop_back() {
                         match e {
-                            ppu::Event::Reset => {
+                            ppu::Event::_Reset => {
                                 cpu.reset(&mut mm);
                                 ppu.reset();
                             }

@@ -36,7 +36,7 @@ const PPUSTATUS_VBLANK: u8 = 0x80;
 
 #[derive(Debug)]
 pub enum Event {
-    Reset,
+    _Reset,
     VBlank,
 }
 

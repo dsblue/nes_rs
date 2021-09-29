@@ -87,16 +87,20 @@ macro_rules! stat_nz {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum AddressMode {
     Imp, // Implicit
+    Acc, // Accumulator
     Imm, // Immediate
+    Adr, // Absolute jump (JSR, JMP)
+    Rel, // Relative
     Zp,  // Zero Page
     Zpx, // Zero Page, X indexed
     Zpy, // Zero Page, Y indexed
-    Izx, // Indirect, X indexed
-    Izy, // Indirect, Y indexed
+    Izx, // Indirect, X indexed (aka INX)
+    Izy, // Indirect, Y indexed (aka INY)
     Abs, // Absolute
     Abx, // Absolute, X
     Aby, // Absolute, Y
     Ind, // Indirect    (JMP only)
+    Err, // Error (Halts)
 }
 
 impl AddressMode {
@@ -105,7 +109,10 @@ impl AddressMode {
 
         match *self {
             Imp => format!(""),
+            Acc => format!(""),
             Imm => format!("#${:02x}", o as u8),
+            Adr => format!(""),
+            Rel => format!(""),
             Zp => format!("${:02x}", o as u8),
             Zpx => format!("${:02x},X", o as u8),
             Zpy => format!("${:02x},Y", o as u8),
@@ -115,6 +122,7 @@ impl AddressMode {
             Ind => format!("(${:02x})", o as u8),
             Izx => format!("(${:02x},X)", o as u8),
             Izy => format!("(${:02x}),Y", o as u8),
+            Err => format!(""),
         }
     }
 
@@ -123,16 +131,20 @@ impl AddressMode {
 
         match *self {
             Imp => 1,
+            Acc => 1,
             Imm => 2,
+            Adr => 3,
+            Abs => 3,
+            Ind => 3,
+            Rel => 2,
+            Abx => 3,
+            Aby => 3,
             Zp => 2,
             Zpx => 2,
             Zpy => 2,
-            Abs => 3,
-            Abx => 3,
-            Aby => 3,
-            Ind => 3,
             Izx => 2,
             Izy => 2,
+            Err => 1,
         }
     }
 }
@@ -148,7 +160,7 @@ enum Instruction {
     Bit(AddressMode),
     Bmi,
     Bne,
-    Bpl,
+    Bpl(AddressMode),
     Brk,
     Bvc,
     Bvs,
@@ -167,12 +179,13 @@ enum Instruction {
     Inx,
     Iny,
     Jmp(AddressMode),
-    Jsr,
+    Jsr(AddressMode),
     Lda(AddressMode),
     Ldx(AddressMode),
     Ldy(AddressMode),
     Lsr(AddressMode),
     Nop(AddressMode),
+    Nop_(AddressMode),
     Ora(AddressMode),
     Pha,
     Php,
@@ -203,8 +216,8 @@ enum Instruction {
     Arr,
     Axs,
     Dcp(AddressMode),
-    Isc(AddressMode), // Also known as ISB
-    Kil,
+    Isb(AddressMode), // Also known as ISC
+    Kil(AddressMode),
     Las,
     Lax(AddressMode),
     Rla(AddressMode),
@@ -237,7 +250,7 @@ impl Instruction {
             Bit(m) => ("bit", m.display(o), m.size()),
             Bmi => ("bmi", Imm.display(o), 2),
             Bne => ("bne", Imm.display(o), 2),
-            Bpl => ("bpl", Imm.display(o), 2),
+            Bpl(m) => ("bpl", Imm.display(o), m.size()),
             Brk => ("brk", "".to_string(), 1),
             Bvc => ("bvc", Imm.display(o), 2),
             Bvs => ("bvs", Imm.display(o), 2),
@@ -256,22 +269,25 @@ impl Instruction {
             Inc(m) => ("inc", m.display(o), m.size()),
             Inx => ("inx", "".to_string(), 1),
             Iny => ("iny", "".to_string(), 1),
-            Isc(m) => ("*isc", m.display(o), m.size()),
+            Isb(m) => ("*isb", m.display(o), m.size()),
             Jmp(m) => ("jmp", Imm.display(o), m.size()),
-            Jsr => ("jsr", Imm.display(o), 3),
+            Jsr(m) => ("jsr", Imm.display(o), m.size()),
             Lax(m) => ("*lax", m.display(o), m.size()),
             Lda(m) => ("lda", m.display(o), m.size()),
             Ldx(m) => ("ldx", m.display(o), m.size()),
             Ldy(m) => ("ldy", m.display(o), m.size()),
             Lsr(m) => ("lsr", m.display(o), m.size()),
             Nop(m) => ("nop", m.display(o), m.size()),
+            Nop_(m) => ("*nop", m.display(o), m.size()),
             Ora(m) => ("ora", m.display(o), m.size()),
             Pha => ("pha", "".to_string(), 1),
             Php => ("php", "".to_string(), 1),
             Pla => ("pla", "".to_string(), 1),
             Plp => ("plp", "".to_string(), 1),
+            Rla(m) => ("rla", m.display(o), m.size()),
             Rol(m) => ("rol", m.display(o), m.size()),
             Ror(m) => ("ror", m.display(o), m.size()),
+            Rra(m) => ("rra", m.display(o), m.size()),
             Rti => ("rti", "".to_string(), 1),
             Rts => ("rts", "".to_string(), 1),
             Sax(m) => ("*sax", m.display(o), m.size()),
@@ -280,6 +296,7 @@ impl Instruction {
             Sed => ("sed", "".to_string(), 1),
             Sei => ("sei", "".to_string(), 1),
             Slo(m) => ("*slo", m.display(o), m.size()),
+            Sre(m) => ("*sre", m.display(o), m.size()),
             Sta(m) => ("sta", m.display(o), m.size()),
             Stx(m) => ("stx", m.display(o), m.size()),
             Sty(m) => ("sty", m.display(o), m.size()),
@@ -390,8 +407,8 @@ impl Cpu6502 {
     pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         use Instruction::*;
 
-        if self.inst_count == 0x2000 {
-           sleep(Duration::from_secs(1000));
+        if self.inst_count == 0x3000 {
+            sleep(Duration::from_secs(1000));
         }
 
         match self.cycle {
@@ -433,7 +450,7 @@ impl Cpu6502 {
                 Bit(m) => self.ex_bit(mm, m),
                 Bmi => self.ex_bmi(mm),
                 Bne => self.ex_bne(mm),
-                Bpl => self.ex_bpl(mm),
+                Bpl(_) => self.ex_bpl(mm),
                 Brk => self.ex_brk(mm),
                 Bvc => self.ex_bvc(mm),
                 Bvs => self.ex_bvs(mm),
@@ -452,12 +469,13 @@ impl Cpu6502 {
                 Inx => self.ex_inx(),
                 Iny => self.ex_iny(),
                 Jmp(m) => self.ex_jmp(mm, m),
-                Jsr => self.ex_jsr(mm),
+                Jsr(_) => self.ex_jsr(mm),
                 Lda(m) => self.ex_lda(mm, m),
                 Ldx(m) => self.ex_ldx(mm, m),
                 Ldy(m) => self.ex_ldy(mm, m),
                 Lsr(m) => self.ex_lsr(mm, m),
                 Nop(m) => self.ex_nop(mm, m),
+                Nop_(m) => self.ex_nop(mm, m),
                 Ora(m) => self.ex_ora(mm, m),
                 Pha => self.ex_pha(mm),
                 Php => self.ex_php(mm),
@@ -488,17 +506,17 @@ impl Cpu6502 {
                 Arr => panic!("Unimplemented Opcode {:?}", self.inst),
                 Axs => panic!("Unimplemented Opcode {:?}", self.inst),
                 Dcp(m) => self.ex_dcp(mm, m),
-                Isc(m) => self.ex_isc(mm, m),
-                Kil => panic!("Unimplemented Opcode {:?}", self.inst),
+                Isb(m) => self.ex_isb(mm, m),
+                Kil(_) => panic!("Unimplemented Opcode {:?}", self.inst),
                 Las => panic!("Unimplemented Opcode {:?}", self.inst),
                 Lax(m) => self.ex_lax(mm, m),
-                Rla(_) => panic!("Unimplemented Opcode {:?}", self.inst),
-                Rra(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Rla(m) => self.ex_rla(mm, m),
+                Rra(m) => self.ex_rra(mm, m),
                 Shx(m) => self.ex_shx(mm, m),
                 Shy(m) => self.ex_shy(mm, m),
                 Sax(m) => self.ex_sax(mm, m),
                 Slo(m) => self.ex_slo(mm, m),
-                Sre(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Sre(m) => self.ex_sre(mm, m),
                 Tas => panic!("Unimplemented Opcode {:?}", self.inst),
                 Xaa => panic!("Unimplemented Opcode {:?}", self.inst),
 
@@ -559,39 +577,39 @@ impl Cpu6502 {
         match op {
             0x00 => Brk,
             0x01 => Ora(Izx),
-            0x02 => Kil,
+            0x02 => Kil(Err),
             0x03 => Slo(Izx),
-            0x04 => Nop(Zp),
+            0x04 => Nop_(Zp),
             0x05 => Ora(Zp),
             0x06 => Asl(Zp),
             0x07 => Slo(Zp),
             0x08 => Php,
             0x09 => Ora(Imm),
-            0x0a => Asl(Imp),
+            0x0a => Asl(Acc),
             0x0b => Anc,
-            0x0c => Nop(Abs),
+            0x0c => Nop_(Abs),
             0x0d => Ora(Abs),
             0x0e => Asl(Abs),
             0x0f => Slo(Abs),
-            0x10 => Bpl,
+            0x10 => Bpl(Rel),
             0x11 => Ora(Izy),
-            0x12 => Kil,
+            0x12 => Kil(Err),
             0x13 => Slo(Izy),
-            0x14 => Nop(Zpx),
+            0x14 => Nop_(Zpx),
             0x15 => Ora(Zpx),
             0x16 => Asl(Zpx),
             0x17 => Slo(Zpx),
             0x18 => Clc,
             0x19 => Ora(Aby),
-            0x1a => Nop(Imp),
+            0x1a => Nop_(Imp),
             0x1b => Slo(Aby),
-            0x1c => Nop(Abx),
+            0x1c => Nop_(Abx),
             0x1d => Ora(Abx),
             0x1e => Asl(Abx),
             0x1f => Slo(Abx),
-            0x20 => Jsr,
+            0x20 => Jsr(Adr),
             0x21 => And(Izx),
-            0x22 => Kil,
+            0x22 => Kil(Err),
             0x23 => Rla(Izx),
             0x24 => Bit(Zp),
             0x25 => And(Zp),
@@ -599,7 +617,7 @@ impl Cpu6502 {
             0x27 => Rla(Zp),
             0x28 => Plp,
             0x29 => And(Imm),
-            0x2a => Rol(Imp),
+            0x2a => Rol(Acc),
             0x2b => Anc,
             0x2c => Bit(Abs),
             0x2d => And(Abs),
@@ -607,63 +625,63 @@ impl Cpu6502 {
             0x2f => Rla(Abs),
             0x30 => Bmi,
             0x31 => And(Izy),
-            0x32 => Kil,
+            0x32 => Kil(Err),
             0x33 => Rla(Izy),
-            0x34 => Nop(Zpx),
+            0x34 => Nop_(Zpx),
             0x35 => And(Zpx),
             0x36 => Rol(Zpx),
             0x37 => Rla(Zpx),
             0x38 => Sec,
             0x39 => And(Aby),
-            0x3a => Nop(Imp),
+            0x3a => Nop_(Imp),
             0x3b => Rla(Aby),
-            0x3c => Nop(Abx),
+            0x3c => Nop_(Abx),
             0x3d => And(Abx),
             0x3e => Rol(Abx),
             0x3f => Rla(Abx),
             0x40 => Rti,
             0x41 => Eor(Izx),
-            0x42 => Kil,
+            0x42 => Kil(Err),
             0x43 => Sre(Izx),
-            0x44 => Nop(Zp),
+            0x44 => Nop_(Zp),
             0x45 => Eor(Zp),
             0x46 => Lsr(Zp),
             0x47 => Sre(Zp),
             0x48 => Pha,
             0x49 => Eor(Imm),
-            0x4a => Lsr(Imp),
+            0x4a => Lsr(Acc),
             0x4b => Alr,
-            0x4c => Jmp(Abs),
+            0x4c => Jmp(Adr),
             0x4d => Eor(Abs),
             0x4e => Lsr(Abs),
             0x4f => Sre(Abs),
             0x50 => Bvc,
             0x51 => Eor(Izy),
-            0x52 => Kil,
+            0x52 => Kil(Err),
             0x53 => Sre(Izy),
-            0x54 => Nop(Zpx),
+            0x54 => Nop_(Zpx),
             0x55 => Eor(Zpx),
             0x56 => Lsr(Zpx),
             0x57 => Sre(Zpx),
             0x58 => Cli,
             0x59 => Eor(Aby),
-            0x5a => Nop(Imp),
+            0x5a => Nop_(Imp),
             0x5b => Sre(Aby),
-            0x5c => Nop(Abx),
+            0x5c => Nop_(Abx),
             0x5d => Eor(Abx),
             0x5e => Lsr(Abx),
             0x5f => Sre(Abx),
             0x60 => Rts,
             0x61 => Adc(Izx),
-            0x62 => Kil,
+            0x62 => Kil(Err),
             0x63 => Rra(Izx),
-            0x64 => Nop(Zp),
+            0x64 => Nop_(Zp),
             0x65 => Adc(Zp),
             0x66 => Ror(Zp),
             0x67 => Rra(Zp),
             0x68 => Pla,
             0x69 => Adc(Imm),
-            0x6a => Ror(Imp),
+            0x6a => Ror(Acc),
             0x6b => Arr,
             0x6c => Jmp(Ind),
             0x6d => Adc(Abs),
@@ -671,30 +689,30 @@ impl Cpu6502 {
             0x6f => Rra(Abs),
             0x70 => Bvs,
             0x71 => Adc(Izy),
-            0x72 => Kil,
+            0x72 => Kil(Err),
             0x73 => Rra(Izy),
-            0x74 => Nop(Zpx),
+            0x74 => Nop_(Zpx),
             0x75 => Adc(Zpx),
             0x76 => Ror(Zpx),
             0x77 => Rra(Zpx),
             0x78 => Sei,
             0x79 => Adc(Aby),
-            0x7a => Nop(Imp),
+            0x7a => Nop_(Imp),
             0x7b => Rra(Aby),
-            0x7c => Nop(Abx),
+            0x7c => Nop_(Abx),
             0x7d => Adc(Abx),
             0x7e => Ror(Abx),
             0x7f => Rra(Abx),
-            0x80 => Nop(Imp),
+            0x80 => Nop_(Imm),
             0x81 => Sta(Izx),
-            0x82 => Nop(Imm),
+            0x82 => Nop_(Imm),
             0x83 => Sax(Izx),
             0x84 => Sty(Zp),
             0x85 => Sta(Zp),
             0x86 => Stx(Zp),
             0x87 => Sax(Zp),
             0x88 => Dey,
-            0x89 => Nop(Imm),
+            0x89 => Nop_(Imm),
             0x8a => Txa,
             0x8b => Xaa,
             0x8c => Sty(Abs),
@@ -703,7 +721,7 @@ impl Cpu6502 {
             0x8f => Sax(Abs),
             0x90 => Bcc,
             0x91 => Sta(Izy),
-            0x92 => Kil,
+            0x92 => Kil(Err),
             0x93 => Ahx(Izy), // AKA: Sha
             0x94 => Sty(Zpx),
             0x95 => Sta(Zpx),
@@ -735,7 +753,7 @@ impl Cpu6502 {
             0xaf => Lax(Abs),
             0xb0 => Bcs,
             0xb1 => Lda(Izy),
-            0xb2 => Kil,
+            0xb2 => Kil(Err),
             0xb3 => Lax(Izy),
             0xb4 => Ldy(Zpx),
             0xb5 => Lda(Zpx),
@@ -751,7 +769,7 @@ impl Cpu6502 {
             0xbf => Lax(Aby),
             0xc0 => Cpy(Imm),
             0xc1 => Cmp(Izx),
-            0xc2 => Nop(Imm),
+            0xc2 => Nop_(Imm),
             0xc3 => Dcp(Izx),
             0xc4 => Cpy(Zp),
             0xc5 => Cmp(Zp),
@@ -767,28 +785,28 @@ impl Cpu6502 {
             0xcf => Dcp(Abs),
             0xd0 => Bne,
             0xd1 => Cmp(Izy),
-            0xd2 => Kil,
+            0xd2 => Kil(Err),
             0xd3 => Dcp(Izy),
-            0xd4 => Nop(Zpx),
+            0xd4 => Nop_(Zpx),
             0xd5 => Cmp(Zpx),
             0xd6 => Dec(Zpx),
             0xd7 => Dcp(Zpx),
             0xd8 => Cld,
             0xd9 => Cmp(Aby),
-            0xda => Nop(Imp),
+            0xda => Nop_(Imp),
             0xdb => Dcp(Aby),
-            0xdc => Nop(Abx),
+            0xdc => Nop_(Abx),
             0xdd => Cmp(Abx),
             0xde => Dec(Abx),
             0xdf => Dcp(Abx),
             0xe0 => Cpx(Imm),
             0xe1 => Sbc(Izx),
-            0xe2 => Nop(Imm),
-            0xe3 => Isc(Izx),
+            0xe2 => Nop_(Imm),
+            0xe3 => Isb(Izx),
             0xe4 => Cpx(Zp),
             0xe5 => Sbc(Zp),
             0xe6 => Inc(Zp),
-            0xe7 => Isc(Zp),
+            0xe7 => Isb(Zp),
             0xe8 => Inx,
             0xe9 => Sbc(Imm),
             0xea => Nop(Imp),
@@ -796,23 +814,23 @@ impl Cpu6502 {
             0xec => Cpx(Abs),
             0xed => Sbc(Abs),
             0xee => Inc(Abs),
-            0xef => Isc(Abs),
+            0xef => Isb(Abs),
             0xf0 => Beq,
             0xf1 => Sbc(Izy),
-            0xf2 => Kil,
-            0xf3 => Isc(Izy),
-            0xf4 => Nop(Zpx),
+            0xf2 => Kil(Err),
+            0xf3 => Isb(Izy),
+            0xf4 => Nop_(Zpx),
             0xf5 => Sbc(Zpx),
             0xf6 => Inc(Zpx),
-            0xf7 => Isc(Zpx),
+            0xf7 => Isb(Zpx),
             0xf8 => Sed,
             0xf9 => Sbc(Aby),
-            0xfa => Nop(Imp),
-            0xfb => Isc(Aby),
-            0xfc => Nop(Abx),
+            0xfa => Nop_(Imp),
+            0xfb => Isb(Aby),
+            0xfc => Nop_(Abx),
             0xfd => Sbc(Abx),
             0xfe => Inc(Abx),
-            0xff => Isc(Abx),
+            0xff => Isb(Abx),
         }
     }
 
@@ -880,13 +898,13 @@ impl Cpu6502 {
 
         let (name, operand, size) = self.inst.info(next_mem);
         format!(
-            "{:04X}  {} {:>4} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: ...",
+            "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.reg_pc,
-            match size { 
+            match size {
                 1 => format!("{:02X}      ", b0),
                 2 => format!("{:02X} {:02X}   ", b0, b1),
                 3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
-                _ => panic!("Bad Size")
+                _ => panic!("Bad Size"),
             },
             name.to_ascii_uppercase(),
             operand,
@@ -984,7 +1002,7 @@ impl Cpu6502 {
         let ptr = self.ptr as usize;
 
         match m {
-            AddressMode::Imp => {
+            AddressMode::Imp | AddressMode::Acc => {
                 self.value = self.reg_a;
                 self.cycle = 1;
             }
@@ -1098,7 +1116,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Izx => match self.cycle {
                 2 => {
                     self.ptr = self.read_u8(mm, pc);
@@ -1209,7 +1227,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Aby => match self.cycle {
                 2 => {
                     self.addr = self.read_u8(mm, pc) as u16;
@@ -1231,7 +1249,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Izx => match self.cycle {
                 2 => {
                     self.ptr = self.read_u8(mm, pc);
@@ -1380,7 +1398,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Aby => match self.cycle {
                 2 => {
                     self.addr = self.read_u8(mm, pc) as u16;
@@ -1402,7 +1420,7 @@ impl Cpu6502 {
                     self.cycle = 1;
                 }
                 _ => (),
-            }
+            },
             AddressMode::Izx => match self.cycle {
                 2 => {
                     self.ptr = self.read_u8(mm, pc);
@@ -1603,7 +1621,7 @@ impl Cpu6502 {
         if self.cycle == 1 {
             let t = self.value << 1;
 
-            if let AddressMode::Imp = m {
+            if let AddressMode::Acc = m {
                 self.reg_a = t;
             } else {
                 self.write_u8(mm, self.addr as usize, t);
@@ -1874,7 +1892,7 @@ impl Cpu6502 {
         let addr = self.addr as usize;
 
         match m {
-            AddressMode::Abs => match self.cycle {
+            AddressMode::Adr => match self.cycle {
                 2 => {
                     self.addr = self.read_u8(mm, pc) as u16;
                     self.reg_pc = self.reg_pc.wrapping_add(1);
@@ -1995,7 +2013,7 @@ impl Cpu6502 {
         if self.cycle == 1 {
             let t = self.value >> 1;
 
-            if let AddressMode::Imp = m {
+            if let AddressMode::Acc = m {
                 self.reg_a = t;
             } else {
                 self.write_u8(mm, self.addr as usize, t);
@@ -2112,7 +2130,7 @@ impl Cpu6502 {
                 t |= 1;
             }
 
-            if let AddressMode::Imp = m {
+            if let AddressMode::Acc = m {
                 self.reg_a = t;
             } else {
                 self.write_u8(mm, self.addr as usize, t);
@@ -2137,7 +2155,7 @@ impl Cpu6502 {
                 t |= 0x80;
             }
 
-            if let AddressMode::Imp = m {
+            if let AddressMode::Acc = m {
                 self.reg_a = t;
             } else {
                 self.write_u8(mm, self.addr as usize, t);
@@ -2165,7 +2183,7 @@ impl Cpu6502 {
             }
             4 => {
                 //self.reg_p = self.read_u8(mm, s);
-                self.reg_p = self.read_u8(mm, s) | 0b00100000;   // MATCH NESTEST
+                self.reg_p = self.read_u8(mm, s) | 0b00100000; // MATCH NESTEST
                 self.reg_s = self.reg_s.wrapping_add(1);
                 self.cycle += 1;
             }
@@ -2324,7 +2342,7 @@ impl Cpu6502 {
         self.handle_write(mm, m);
     }
 
-    // DCP Decrement then Compare
+    // DCP Decrement then Compare (DEC, CMP)
     fn ex_dcp(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
         self.handle_read_modify_write(mm, m);
@@ -2335,20 +2353,21 @@ impl Cpu6502 {
             self.write_u8(mm, self.addr as usize, t);
 
             // Update C flag
-            update_status!(self.reg_p, self.reg_a >= self.value, C);
+            update_status!(self.reg_p, self.reg_a >= t, C);
 
             // Update N and Z flags
-            stat_nz!(self.reg_p, t);
+            stat_nz!(self.reg_p, self.reg_a.wrapping_sub(t));
         }
     }
 
-    // ISC Increment memory then SBC 
-    fn ex_isc(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+    // ISB Increment memory then SBC
+    fn ex_isb(&mut self, mm: &mut MemoryMap, m: AddressMode) {
         info!("Unusual instrction {:?}", self.inst);
         self.handle_read_modify_write(mm, m);
 
         if self.cycle == 1 {
             self.value = self.value.wrapping_add(1);
+            self.write_u8(mm, self.addr as usize, self.value);
 
             self.value = !self.value;
             let t = self.reg_a as u16 + self.value as u16 + (self.reg_p & C == C) as u16;
@@ -2377,7 +2396,59 @@ impl Cpu6502 {
             // Update N and Z flags
             stat_nz!(self.reg_p, self.reg_a);
         }
+    }
 
+    // RLA
+    fn ex_rla(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        info!("Unusual instrction {:?}", self.inst);
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let mut t = self.value << 1;
+
+            if (self.reg_p & C) == C {
+                t |= 1;
+            }
+
+            self.write_u8(mm, self.addr as usize, t);
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 0x80) == 0x80, C);
+
+            self.reg_a = t & self.reg_a;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // RRA Rotate Right then ADC
+    fn ex_rra(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        info!("Unusual instrction {:?}", self.inst);
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let mut t = self.value >> 1;
+
+            if (self.reg_p & C) == C {
+                t |= 0x80;
+            }
+
+            self.write_u8(mm, self.addr as usize, t);
+
+            let t2 = self.reg_a as u16 + t as u16 + ((self.value & 1) == 1) as u16;
+
+            // Update C flag
+            update_status!(self.reg_p, (t2 & 0x100) == 0x100, C);
+
+            // Update V flag
+            stat_v!(self.reg_p, self.reg_a, t, t2 & 0xff);
+
+            self.reg_a = (t2 & 0xff) as u8;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
+        }
     }
 
     // SAX Store A & X to memory
@@ -2407,19 +2478,37 @@ impl Cpu6502 {
         self.handle_read_modify_write(mm, m);
 
         if self.cycle == 1 {
-            let t = (self.value << 1) | self.reg_a;
+            let t = self.value << 1;
 
-            if let AddressMode::Imp = m {
-                self.reg_a = t;
-            } else {
-                self.write_u8(mm, self.addr as usize, t);
-            }
+            self.write_u8(mm, self.addr as usize, t);
 
             // Update C flag
             update_status!(self.reg_p, (self.value & 0x80) == 0x80, C);
 
+            self.reg_a = t | self.reg_a;
+
             // Update N and Z flags
-            stat_nz!(self.reg_p, t);
+            stat_nz!(self.reg_p, self.reg_a);
+        }
+    }
+
+    // SRE Locical Shift Right then XOR
+    fn ex_sre(&mut self, mm: &mut MemoryMap, m: AddressMode) {
+        info!("Unusual instrction {:?}", self.inst);
+        self.handle_read_modify_write(mm, m);
+
+        if self.cycle == 1 {
+            let t = self.value >> 1;
+
+            self.write_u8(mm, self.addr as usize, t);
+
+            // Update C flag
+            update_status!(self.reg_p, (self.value & 1) == 1, C);
+
+            self.reg_a = t ^ self.reg_a;
+
+            // Update N and Z flags
+            stat_nz!(self.reg_p, self.reg_a);
         }
     }
 
