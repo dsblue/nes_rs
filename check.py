@@ -4,13 +4,19 @@
 golden = list()
 test = list()
 
-with open('nestest.log', 'r') as f:
+with open('nestest.log', 'r', encoding='utf-8') as f:
     for line in f.readlines():
         golden.append(line[0:14] + " " + line[16:19] + line[47:73])
 
-with open('run.log', 'r') as f:
-    for line in f.readlines():
-        test.append(line[11:25] + " " + line[27:31] + line[64:89])
+try:
+    f = open('run.log', 'r', encoding='utf-8')
+    lines = f.readlines()
+except UnicodeDecodeError:
+    f = open('run.log', 'r', encoding='utf-16')
+    lines = f.readlines()
+
+for line in lines:
+    test.append(line[11:25] + " " + line[27:31] + line[64:89])
 
 i = 0
 for (t, g) in zip(test, golden):
