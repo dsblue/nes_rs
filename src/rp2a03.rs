@@ -104,24 +104,24 @@ enum AddressMode {
 }
 
 impl AddressMode {
-    fn display(&self, o: u16) -> String {
+    fn display(&self, o: (u8, u8, u8)) -> String {
         use AddressMode::*;
 
         match *self {
             Imp => format!(""),
             Acc => format!(""),
-            Imm => format!("#${:02x}", o as u8),
-            Adr => format!(""),
-            Rel => format!(""),
-            Zp => format!("${:02x}", o as u8),
-            Zpx => format!("${:02x},X", o as u8),
-            Zpy => format!("${:02x},Y", o as u8),
-            Abs => format!("${:04x}", o as u16),
-            Abx => format!("${:04x},X", o as u16),
-            Aby => format!("${:04x},Y", o as u16),
-            Ind => format!("(${:02x})", o as u8),
-            Izx => format!("(${:02x},X)", o as u8),
-            Izy => format!("(${:02x}),Y", o as u8),
+            Imm => format!("#${:02x}", o.1),
+            Adr => format!("${:02x}{:02x}", o.2, o.1),
+            Rel => format!("${:02x}{:02x}", o.2, o.1),
+            Zp => format!("${:02x}", o.1),
+            Zpx => format!("${:02x},X", o.1),
+            Zpy => format!("${:02x},Y", o.1),
+            Abs => format!("${:02x}{:02x}", o.2, o.1),
+            Abx => format!("${:02x}{:02x},X", o.2, o.1),
+            Aby => format!("${:02x}{:02x},Y", o.2, o.1),
+            Ind => format!("(${:02x})", o.1),
+            Izx => format!("(${:02x},X)", o.1),
+            Izy => format!("(${:02x}),Y", o.1),
             Err => format!(""),
         }
     }
@@ -160,7 +160,7 @@ enum Instruction {
     Bit(AddressMode),
     Bmi,
     Bne,
-    Bpl(AddressMode),
+    Bpl,
     Brk,
     Bvc,
     Bvs,
@@ -236,7 +236,7 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn info(&self, o: u16) -> (&str, String, u8) {
+    fn info(&self, o: (u8, u8, u8)) -> (&str, String, u8) {
         use AddressMode::*;
         use Instruction::*;
 
@@ -244,16 +244,16 @@ impl Instruction {
             Adc(m) => ("adc", m.display(o), m.size()),
             And(m) => ("and", m.display(o), m.size()),
             Asl(m) => ("asl", m.display(o), m.size()),
-            Bcc => ("bcc", Imm.display(o), 2),
-            Bcs => ("bcs", Imm.display(o), 2),
-            Beq => ("beq", Imm.display(o), 2),
+            Bcc => ("bcc", Rel.display(o), 2),
+            Bcs => ("bcs", Rel.display(o), 2),
+            Beq => ("beq", Rel.display(o), 2),
             Bit(m) => ("bit", m.display(o), m.size()),
-            Bmi => ("bmi", Imm.display(o), 2),
-            Bne => ("bne", Imm.display(o), 2),
-            Bpl(m) => ("bpl", Imm.display(o), m.size()),
+            Bmi => ("bmi", Rel.display(o), 2),
+            Bne => ("bne", Rel.display(o), 2),
+            Bpl => ("bpl", Rel.display(o), 2),
             Brk => ("brk", "".to_string(), 1),
-            Bvc => ("bvc", Imm.display(o), 2),
-            Bvs => ("bvs", Imm.display(o), 2),
+            Bvc => ("bvc", Rel.display(o), 2),
+            Bvs => ("bvs", Rel.display(o), 2),
             Clc => ("clc", "".to_string(), 1),
             Cld => ("cld", "".to_string(), 1),
             Cli => ("cli", "".to_string(), 1),
@@ -270,8 +270,8 @@ impl Instruction {
             Inx => ("inx", "".to_string(), 1),
             Iny => ("iny", "".to_string(), 1),
             Isb(m) => ("*isb", m.display(o), m.size()),
-            Jmp(m) => ("jmp", Imm.display(o), m.size()),
-            Jsr(m) => ("jsr", Imm.display(o), m.size()),
+            Jmp(m) => ("jmp", m.display(o), m.size()),
+            Jsr(m) => ("jsr", m.display(o), m.size()),
             Lax(m) => ("*lax", m.display(o), m.size()),
             Lda(m) => ("lda", m.display(o), m.size()),
             Ldx(m) => ("ldx", m.display(o), m.size()),
@@ -450,7 +450,7 @@ impl Cpu6502 {
                 Bit(m) => self.ex_bit(mm, m),
                 Bmi => self.ex_bmi(mm),
                 Bne => self.ex_bne(mm),
-                Bpl(_) => self.ex_bpl(mm),
+                Bpl => self.ex_bpl(mm),
                 Brk => self.ex_brk(mm),
                 Bvc => self.ex_bvc(mm),
                 Bvs => self.ex_bvs(mm),
@@ -591,7 +591,7 @@ impl Cpu6502 {
             0x0d => Ora(Abs),
             0x0e => Asl(Abs),
             0x0f => Slo(Abs),
-            0x10 => Bpl(Rel),
+            0x10 => Bpl,
             0x11 => Ora(Izy),
             0x12 => Kil(Err),
             0x13 => Slo(Izy),
@@ -843,9 +843,9 @@ impl Cpu6502 {
             // Disassembly info for debug
             let op = mm.cpu_read_u8(address);
             let inst = Cpu6502::decode_op(op);
-            let next_mem =
-                (mm.cpu_read_u8(address + 2) as u16) << 8 | mm.cpu_read_u8(address + 1) as u16;
-            let (name, operand, size) = inst.info(next_mem);
+            let context = (mm.cpu_read_u8(address), mm.cpu_read_u8(address + 1), mm.cpu_read_u8(address + 2));
+
+            let (name, operand, size) = inst.info(context);
 
             if size == 0 {
                 s = format!("{}Unknown inst: (0x{:02x}) {}, break\n", s, op, name);
@@ -867,10 +867,11 @@ impl Cpu6502 {
     #[allow(dead_code)]
     fn disassemble_current(&self, mm: &mut MemoryMap) -> String {
         // Disassembly info for debug
-        let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
-            | self.read_u8(mm, self.reg_pc as usize + 1) as u16;
+        let b0 = self.read_u8(mm, self.reg_pc as usize);
+        let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
+        let b2 = self.read_u8(mm, self.reg_pc as usize + 2);
 
-        let (name, operand, _) = self.inst.info(next_mem);
+        let (name, operand, _) = self.inst.info((b0, b1, b2));
         format!(
             "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:04x} => {}",
             self.reg_pc,
@@ -889,14 +890,11 @@ impl Cpu6502 {
     #[allow(dead_code)]
     fn disassemble_current_nestest(&self, mm: &mut MemoryMap) -> String {
         // Disassembly info for debug
-        let next_mem = (self.read_u8(mm, self.reg_pc as usize + 2) as u16) << 8
-            | self.read_u8(mm, self.reg_pc as usize + 1) as u16;
-
         let b0 = self.read_u8(mm, self.reg_pc as usize);
         let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
         let b2 = self.read_u8(mm, self.reg_pc as usize + 2);
 
-        let (name, operand, size) = self.inst.info(next_mem);
+        let (name, operand, size) = self.inst.info((b0, b1, b2));
         format!(
             "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.reg_pc,
@@ -907,7 +905,7 @@ impl Cpu6502 {
                 _ => panic!("Bad Size"),
             },
             name.to_ascii_uppercase(),
-            operand,
+            operand.to_ascii_uppercase(),
             self.reg_a,
             self.reg_x,
             self.reg_y,
