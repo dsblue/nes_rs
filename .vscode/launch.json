@@ -39,7 +39,7 @@
                 }
             },
             "args": [
-                "Super_mario_brothers.nes"
+                "nestest.nes"
             ],
             "cwd": "${workspaceFolder}"
         },
