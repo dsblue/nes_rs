@@ -104,24 +104,24 @@ enum AddressMode {
 }
 
 impl AddressMode {
-    fn display(&self, o: (u8, u8, u8)) -> String {
+    fn display(&self, o: (u8, u16, u16)) -> String {
         use AddressMode::*;
 
         match *self {
             Imp => format!(""),
             Acc => format!(""),
-            Imm => format!("#${:02x}", o.1),
-            Adr => format!("${:02x}{:02x}", o.2, o.1),
-            Rel => format!("${:02x}{:02x}", o.2, o.1),
-            Zp => format!("${:02x}", o.1),
-            Zpx => format!("${:02x},X", o.1),
-            Zpy => format!("${:02x},Y", o.1),
-            Abs => format!("${:02x}{:02x}", o.2, o.1),
-            Abx => format!("${:02x}{:02x},X", o.2, o.1),
-            Aby => format!("${:02x}{:02x},Y", o.2, o.1),
-            Ind => format!("(${:02x})", o.1),
-            Izx => format!("(${:02x},X)", o.1),
-            Izy => format!("(${:02x}),Y", o.1),
+            Imm => format!("#${:02x}", o.0),
+            Adr => format!("${:04x}", o.1),
+            Rel => format!("${:04x}", o.2),
+            Zp => format!("${:02x}", o.0),
+            Zpx => format!("${:02x},X", o.0),
+            Zpy => format!("${:02x},Y", o.0),
+            Abs => format!("${:04x}", o.1),
+            Abx => format!("${:04x},X", o.1),
+            Aby => format!("${:04x},Y", o.1),
+            Ind => format!("(${:02x})", o.0),
+            Izx => format!("(${:02x},X)", o.0),
+            Izy => format!("(${:02x}),Y", o.0),
             Err => format!(""),
         }
     }
@@ -236,7 +236,7 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn info(&self, o: (u8, u8, u8)) -> (&str, String, u8) {
+    fn info(&self, o: (u8, u16, u16)) -> (&str, String, u8) {
         use AddressMode::*;
         use Instruction::*;
 
@@ -335,6 +335,9 @@ pub struct Cpu6502 {
     cycle: u8,
 
     internal_ram: [u8; 2 * 0x400],
+
+    trace_on: bool,
+    prev_state: (u16, Instruction, u8, u8, u8, u8, u8),
 }
 
 impl Cpu6502 {
@@ -362,6 +365,9 @@ impl Cpu6502 {
             cycle: 1,
 
             internal_ram: [0u8; 2 * 1024],
+
+            trace_on: true,
+            prev_state: (0, Instruction::Brk, 0, 0, 0, 0, 0),
         }
     }
 
@@ -416,6 +422,14 @@ impl Cpu6502 {
                 panic!("Cycle 0 is reserved");
             }
             1 => {
+                if self.trace_on && self.inst_count != 0 {
+                    println!(
+                        "{:>8}:  {}",
+                        self.inst_count,
+                        self.disassemble_nestest(mm, self.prev_state)
+                    );
+                }
+
                 // Check for interrupts
                 if self.nmi_pending {
                     info!("NMI");
@@ -430,15 +444,11 @@ impl Cpu6502 {
                     self.inst = Cpu6502::decode_op(op);
                 }
 
-                println!(
-                    "{:>8}:  {}",
-                    self.inst_count,
-                    self.disassemble_current_nestest(mm)
-                );
-                self.inst_count += 1;
-
+                self.prev_state = (self.reg_pc, self.inst, self.reg_a, self.reg_x, self.reg_y, self.reg_p, self.reg_s);
+                
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.cycle += 1;
+                self.inst_count += 1;
             }
             _ => match self.inst {
                 Adc(m) => self.ex_adc(mm, m),
@@ -843,7 +853,11 @@ impl Cpu6502 {
             // Disassembly info for debug
             let op = mm.cpu_read_u8(address);
             let inst = Cpu6502::decode_op(op);
-            let context = (mm.cpu_read_u8(address), mm.cpu_read_u8(address + 1), mm.cpu_read_u8(address + 2));
+            let context = (
+                mm.cpu_read_u8(address + 1),
+                mm.cpu_read_u8(address + 1) as u16 | (mm.cpu_read_u8(address + 2) as u16) << 8,
+                0,
+            );
 
             let (name, operand, size) = inst.info(context);
 
@@ -867,11 +881,13 @@ impl Cpu6502 {
     #[allow(dead_code)]
     fn disassemble_current(&self, mm: &mut MemoryMap) -> String {
         // Disassembly info for debug
-        let b0 = self.read_u8(mm, self.reg_pc as usize);
+        let _b0 = self.read_u8(mm, self.reg_pc as usize);
         let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
         let b2 = self.read_u8(mm, self.reg_pc as usize + 2);
 
-        let (name, operand, _) = self.inst.info((b0, b1, b2));
+        let imm_addr = (b2 as u16) << 8 | b1 as u16;
+        let cal_addr = self.addr;
+        let (name, operand, _) = self.inst.info((b1, imm_addr, cal_addr));
         format!(
             "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:04x} => {}",
             self.reg_pc,
@@ -894,7 +910,9 @@ impl Cpu6502 {
         let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
         let b2 = self.read_u8(mm, self.reg_pc as usize + 2);
 
-        let (name, operand, size) = self.inst.info((b0, b1, b2));
+        let imm_addr = (b2 as u16) << 8 | b1 as u16;
+        let cal_addr = self.addr;
+        let (name, operand, size) = self.inst.info((b1, imm_addr, cal_addr));
         format!(
             "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.reg_pc,
@@ -911,6 +929,41 @@ impl Cpu6502 {
             self.reg_y,
             self.reg_p,
             self.reg_s,
+        )
+    }
+
+    #[allow(dead_code)]
+    fn disassemble_nestest(&self, mm: &mut MemoryMap, state: (u16, Instruction, u8, u8, u8, u8, u8)) -> String {
+
+        let (pc, inst, a, x, y, p, s) = state;
+
+        // Disassembly info for debug
+        let b0 = self.read_u8(mm, pc as usize);
+        let b1 = self.read_u8(mm, pc as usize + 1);
+        let b2 = self.read_u8(mm, pc as usize + 2);
+
+        let imm_addr = (b2 as u16) << 8 | b1 as u16;
+        let cal_addr = self.addr;
+        let (name, operand, size) = inst.info((b1, imm_addr, cal_addr));
+        format!(
+            "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            pc,
+            match size {
+                1 => format!("{:02X}      ", b0),
+                2 => format!("{:02X} {:02X}   ", b0, b1),
+                3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
+                _ => panic!("Bad Size"),
+            },
+            name.to_ascii_uppercase(),
+            match inst {
+                Instruction::Lda(_) => operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
+                Instruction::Ldx(_) => operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
+                Instruction::Stx(_) => operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
+                Instruction::Sta(_) => operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
+                Instruction::Bit(_) => operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
+                _ => operand.to_ascii_uppercase(),
+            },
+            a, x, y, p, s
         )
     }
 
@@ -1370,6 +1423,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1388,10 +1442,10 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr); // Value is ignored
                     self.cycle += 1;
                 }
                 5 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1410,10 +1464,10 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr); // Value is ignored
                     self.cycle += 1;
                 }
                 5 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1441,6 +1495,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1467,6 +1522,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1479,6 +1535,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1496,6 +1553,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1513,6 +1571,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
+                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
