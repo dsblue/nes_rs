@@ -1010,8 +1010,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle += 1;
                 }
                 4 => {
@@ -1032,8 +1032,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle += 1;
                 }
                 5 => {
@@ -1056,8 +1056,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle += 1;
                 }
                 5 => {
@@ -1081,8 +1081,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle += 1;
                 }
                 5 => {
@@ -1113,8 +1113,8 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1141,8 +1141,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1169,8 +1169,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1206,8 +1206,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1229,8 +1229,8 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1252,8 +1252,8 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1280,8 +1280,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1308,8 +1308,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1321,8 +1321,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1339,8 +1339,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1357,8 +1357,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1386,8 +1386,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1409,8 +1409,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1432,8 +1432,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1460,8 +1460,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1488,8 +1488,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1501,8 +1501,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1519,8 +1519,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1537,8 +1537,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
-                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
+                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
