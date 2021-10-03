@@ -106,7 +106,7 @@ impl AddressMode {
 
         match *self {
             Imp => format!(""),
-            Acc => format!(""),
+            Acc => format!("A"),
             Imm => format!("#${:02x}", o.0),
             Adr => format!("${:04x}", o.1),
             Rel => format!("${:04x}", o.2),
@@ -116,7 +116,7 @@ impl AddressMode {
             Abs => format!("${:04x}", o.1),
             Abx => format!("${:04x},X", o.1),
             Aby => format!("${:04x},Y", o.1),
-            Ind => format!("(${:02x})", o.0),
+            Ind => format!("(${:04x})", o.1),
             Izx => format!("(${:02x},X)", o.0),
             Izy => format!("(${:02x}),Y", o.0),
             Err => format!(""),
@@ -182,7 +182,6 @@ enum Instruction {
     Ldy(AddressMode),
     Lsr(AddressMode),
     Nop(AddressMode),
-    Nop_(AddressMode),
     Ora(AddressMode),
     Pha,
     Php,
@@ -272,7 +271,6 @@ impl Instruction {
             Ldy(m) => ("ldy", m.display(o), m.size()),
             Lsr(m) => ("lsr", m.display(o), m.size()),
             Nop(m) => ("nop", m.display(o), m.size()),
-            Nop_(m) => ("*nop", m.display(o), m.size()),
             Ora(m) => ("ora", m.display(o), m.size()),
             Pha => ("pha", "".to_string(), 1),
             Php => ("php", "".to_string(), 1),
@@ -348,6 +346,8 @@ pub struct Cpu6502 {
 
     trace_on: bool,
     prev_state: (u16, Instruction, u8, u8, u8, u8, u8),
+    debugu8: u8,
+    debugu16: u16,
 }
 
 impl Cpu6502 {
@@ -378,6 +378,8 @@ impl Cpu6502 {
 
             trace_on: false,
             prev_state: (0, Instruction::Brk, 0, 0, 0, 0, 0),
+            debugu8: 0,
+            debugu16: 0,
         }
     }
 
@@ -494,7 +496,6 @@ impl Cpu6502 {
                 Ldy(m) => self.ex_ldy(mm, m),
                 Lsr(m) => self.ex_lsr(mm, m),
                 Nop(m) => self.ex_nop(mm, m),
-                Nop_(m) => self.ex_nop(mm, m),
                 Ora(m) => self.ex_ora(mm, m),
                 Pha => self.ex_pha(mm),
                 Php => self.ex_php(mm),
@@ -561,7 +562,7 @@ impl Cpu6502 {
             0x4000..=0x401f => {
                 // NES APU and IO registers
                 warn!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
-                0
+                0xff
             }
             _ => mm.cpu_read_u8(addr),
         }
@@ -598,7 +599,7 @@ impl Cpu6502 {
             0x01 => Ora(Izx),
             0x02 => Kil(Err),
             0x03 => Slo(Izx),
-            0x04 => Nop_(Zp),
+            0x04 => Nop(Zp),
             0x05 => Ora(Zp),
             0x06 => Asl(Zp),
             0x07 => Slo(Zp),
@@ -606,7 +607,7 @@ impl Cpu6502 {
             0x09 => Ora(Imm),
             0x0a => Asl(Acc),
             0x0b => Anc,
-            0x0c => Nop_(Abs),
+            0x0c => Nop(Abs),
             0x0d => Ora(Abs),
             0x0e => Asl(Abs),
             0x0f => Slo(Abs),
@@ -614,15 +615,15 @@ impl Cpu6502 {
             0x11 => Ora(Izy),
             0x12 => Kil(Err),
             0x13 => Slo(Izy),
-            0x14 => Nop_(Zpx),
+            0x14 => Nop(Zpx),
             0x15 => Ora(Zpx),
             0x16 => Asl(Zpx),
             0x17 => Slo(Zpx),
             0x18 => Clc,
             0x19 => Ora(Aby),
-            0x1a => Nop_(Imp),
+            0x1a => Nop(Imp),
             0x1b => Slo(Aby),
-            0x1c => Nop_(Abx),
+            0x1c => Nop(Abx),
             0x1d => Ora(Abx),
             0x1e => Asl(Abx),
             0x1f => Slo(Abx),
@@ -646,15 +647,15 @@ impl Cpu6502 {
             0x31 => And(Izy),
             0x32 => Kil(Err),
             0x33 => Rla(Izy),
-            0x34 => Nop_(Zpx),
+            0x34 => Nop(Zpx),
             0x35 => And(Zpx),
             0x36 => Rol(Zpx),
             0x37 => Rla(Zpx),
             0x38 => Sec,
             0x39 => And(Aby),
-            0x3a => Nop_(Imp),
+            0x3a => Nop(Imp),
             0x3b => Rla(Aby),
-            0x3c => Nop_(Abx),
+            0x3c => Nop(Abx),
             0x3d => And(Abx),
             0x3e => Rol(Abx),
             0x3f => Rla(Abx),
@@ -662,7 +663,7 @@ impl Cpu6502 {
             0x41 => Eor(Izx),
             0x42 => Kil(Err),
             0x43 => Sre(Izx),
-            0x44 => Nop_(Zp),
+            0x44 => Nop(Zp),
             0x45 => Eor(Zp),
             0x46 => Lsr(Zp),
             0x47 => Sre(Zp),
@@ -678,15 +679,15 @@ impl Cpu6502 {
             0x51 => Eor(Izy),
             0x52 => Kil(Err),
             0x53 => Sre(Izy),
-            0x54 => Nop_(Zpx),
+            0x54 => Nop(Zpx),
             0x55 => Eor(Zpx),
             0x56 => Lsr(Zpx),
             0x57 => Sre(Zpx),
             0x58 => Cli,
             0x59 => Eor(Aby),
-            0x5a => Nop_(Imp),
+            0x5a => Nop(Imp),
             0x5b => Sre(Aby),
-            0x5c => Nop_(Abx),
+            0x5c => Nop(Abx),
             0x5d => Eor(Abx),
             0x5e => Lsr(Abx),
             0x5f => Sre(Abx),
@@ -694,7 +695,7 @@ impl Cpu6502 {
             0x61 => Adc(Izx),
             0x62 => Kil(Err),
             0x63 => Rra(Izx),
-            0x64 => Nop_(Zp),
+            0x64 => Nop(Zp),
             0x65 => Adc(Zp),
             0x66 => Ror(Zp),
             0x67 => Rra(Zp),
@@ -710,28 +711,28 @@ impl Cpu6502 {
             0x71 => Adc(Izy),
             0x72 => Kil(Err),
             0x73 => Rra(Izy),
-            0x74 => Nop_(Zpx),
+            0x74 => Nop(Zpx),
             0x75 => Adc(Zpx),
             0x76 => Ror(Zpx),
             0x77 => Rra(Zpx),
             0x78 => Sei,
             0x79 => Adc(Aby),
-            0x7a => Nop_(Imp),
+            0x7a => Nop(Imp),
             0x7b => Rra(Aby),
-            0x7c => Nop_(Abx),
+            0x7c => Nop(Abx),
             0x7d => Adc(Abx),
             0x7e => Ror(Abx),
             0x7f => Rra(Abx),
-            0x80 => Nop_(Imm),
+            0x80 => Nop(Imm),
             0x81 => Sta(Izx),
-            0x82 => Nop_(Imm),
+            0x82 => Nop(Imm),
             0x83 => Sax(Izx),
             0x84 => Sty(Zp),
             0x85 => Sta(Zp),
             0x86 => Stx(Zp),
             0x87 => Sax(Zp),
             0x88 => Dey,
-            0x89 => Nop_(Imm),
+            0x89 => Nop(Imm),
             0x8a => Txa,
             0x8b => Xaa,
             0x8c => Sty(Abs),
@@ -788,7 +789,7 @@ impl Cpu6502 {
             0xbf => Lax(Aby),
             0xc0 => Cpy(Imm),
             0xc1 => Cmp(Izx),
-            0xc2 => Nop_(Imm),
+            0xc2 => Nop(Imm),
             0xc3 => Dcp(Izx),
             0xc4 => Cpy(Zp),
             0xc5 => Cmp(Zp),
@@ -806,21 +807,21 @@ impl Cpu6502 {
             0xd1 => Cmp(Izy),
             0xd2 => Kil(Err),
             0xd3 => Dcp(Izy),
-            0xd4 => Nop_(Zpx),
+            0xd4 => Nop(Zpx),
             0xd5 => Cmp(Zpx),
             0xd6 => Dec(Zpx),
             0xd7 => Dcp(Zpx),
             0xd8 => Cld,
             0xd9 => Cmp(Aby),
-            0xda => Nop_(Imp),
+            0xda => Nop(Imp),
             0xdb => Dcp(Aby),
-            0xdc => Nop_(Abx),
+            0xdc => Nop(Abx),
             0xdd => Cmp(Abx),
             0xde => Dec(Abx),
             0xdf => Dcp(Abx),
             0xe0 => Cpx(Imm),
             0xe1 => Sbc(Izx),
-            0xe2 => Nop_(Imm),
+            0xe2 => Nop(Imm),
             0xe3 => Isb(Izx),
             0xe4 => Cpx(Zp),
             0xe5 => Sbc(Zp),
@@ -838,15 +839,15 @@ impl Cpu6502 {
             0xf1 => Sbc(Izy),
             0xf2 => Kil(Err),
             0xf3 => Isb(Izy),
-            0xf4 => Nop_(Zpx),
+            0xf4 => Nop(Zpx),
             0xf5 => Sbc(Zpx),
             0xf6 => Inc(Zpx),
             0xf7 => Isb(Zpx),
             0xf8 => Sed,
             0xf9 => Sbc(Aby),
-            0xfa => Nop_(Imp),
+            0xfa => Nop(Imp),
             0xfb => Isb(Aby),
-            0xfc => Nop_(Abx),
+            0xfc => Nop(Abx),
             0xfd => Sbc(Abx),
             0xfe => Inc(Abx),
             0xff => Isb(Abx),
@@ -1009,6 +1010,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
@@ -1030,6 +1032,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
@@ -1053,6 +1056,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
@@ -1077,6 +1081,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle += 1;
                 }
@@ -1108,6 +1113,7 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1135,6 +1141,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1157,10 +1164,12 @@ impl Cpu6502 {
                 }
                 5 => {
                     // TODO: Handle variable clock cycles
+                    self.debugu16 = self.addr;
                     self.addr = self.addr.wrapping_add(self.reg_y as u16);
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1197,6 +1206,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1219,6 +1229,7 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1241,6 +1252,7 @@ impl Cpu6502 {
                     self.cycle += 1; // TODO: Handle the 4 cycle case
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1268,6 +1280,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1290,10 +1303,12 @@ impl Cpu6502 {
                 }
                 5 => {
                     // TODO: Handle variable clock cycles
+                    self.debugu16 = self.addr;
                     self.addr = self.addr.wrapping_add(self.reg_y as u16);
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1306,6 +1321,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1323,6 +1339,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1340,6 +1357,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.value = self.read_u8(mm, addr);
                     self.cycle = 1;
                 }
@@ -1368,6 +1386,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1390,6 +1409,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1412,6 +1432,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1439,6 +1460,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1461,10 +1483,12 @@ impl Cpu6502 {
                 }
                 5 => {
                     // TODO: Handle variable clock cycles
+                    self.debugu16 = self.addr;
                     self.addr = self.addr.wrapping_add(self.reg_y as u16);
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1477,6 +1501,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1494,6 +1519,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1511,6 +1537,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1918,6 +1945,7 @@ impl Cpu6502 {
                 }
                 5 => {
                     self.reg_pc |= (self.read_u8(mm, addr | ptr) as u16) << 8;
+                    self.debugu16 = self.reg_pc;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -2711,20 +2739,79 @@ mod test {
                     1 => format!("{:02X}      ", b0),
                     2 => format!("{:02X} {:02X}   ", b0, b1),
                     3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
-                    _ => panic!("Bad Size"),
+                    _ => panic!("Bad Instruction Size"),
                 },
                 name.to_ascii_uppercase(),
                 match inst {
-                    // Instruction::Lda(_) =>
-                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
-                    // Instruction::Ldx(_) =>
-                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
-                    // Instruction::Stx(_) =>
-                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
-                    // Instruction::Sta(_) =>
-                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
-                    // Instruction::Bit(_) =>
-                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    Instruction::Adc(m)
+                    | Instruction::Asl(m)
+                    | Instruction::And(m)
+                    | Instruction::Bit(m)
+                    | Instruction::Cmp(m)
+                    | Instruction::Cpx(m)
+                    | Instruction::Cpy(m)
+                    | Instruction::Dcp(m)
+                    | Instruction::Dec(m)
+                    | Instruction::Eor(m)
+                    | Instruction::Inc(m)
+                    | Instruction::Isb(m)
+                    | Instruction::Jmp(m)
+                    | Instruction::Lax(m)
+                    | Instruction::Lda(m)
+                    | Instruction::Ldx(m)
+                    | Instruction::Ldy(m)
+                    | Instruction::Lsr(m)
+                    | Instruction::Nop(m)
+                    | Instruction::Ora(m)
+                    | Instruction::Rla(m)
+                    | Instruction::Rol(m)
+                    | Instruction::Ror(m)
+                    | Instruction::Rra(m)
+                    | Instruction::Sax(m)
+                    | Instruction::Sbc(m)
+                    | Instruction::Slo(m)
+                    | Instruction::Sre(m)
+                    | Instruction::Sta(m)
+                    | Instruction::Stx(m)
+                    | Instruction::Sty(m) => match m {
+                        AddressMode::Abs | AddressMode::Zp =>
+                            operand.to_ascii_uppercase()
+                                + &format!(" = {:02X}", cpu.debugu8).to_owned(),
+                        AddressMode::Zpx | AddressMode::Zpy =>
+                            operand.to_ascii_uppercase()
+                                + &format!(
+                                    " @ {:02X} = {:02X}",
+                                    cpu.addr.to_owned(),
+                                    cpu.debugu8.to_owned(),
+                                ),
+                        AddressMode::Abx | AddressMode::Aby =>
+                            operand.to_ascii_uppercase()
+                                + &format!(
+                                    " @ {:04X} = {:02X}",
+                                    cpu.addr.to_owned(),
+                                    cpu.debugu8.to_owned(),
+                                ),
+                        AddressMode::Izx =>
+                            operand.to_ascii_uppercase()
+                                + &format!(
+                                    " @ {:02X} = {:04X} = {:02X}",
+                                    cpu.ptr.wrapping_sub(1).to_owned(),
+                                    cpu.addr.to_owned(),
+                                    cpu.debugu8.to_owned()
+                                ),
+                        AddressMode::Izy =>
+                            operand.to_ascii_uppercase()
+                                + &format!(
+                                    " = {:04X} @ {:04X} = {:02X}",
+                                    cpu.debugu16.to_owned(),
+                                    cpu.addr.to_owned(),
+                                    cpu.debugu8.to_owned()
+                                ),
+                        AddressMode::Ind =>
+                            operand.to_ascii_uppercase()
+                                + &format!(" = {:04X}", cpu.debugu16.to_owned()),
+                        _ => operand.to_ascii_uppercase(),
+                    },
                     _ => operand.to_ascii_uppercase(),
                 },
                 a,
@@ -2745,9 +2832,10 @@ mod test {
 
         cpu.power_on_reset(&mut mm);
 
+        // Jump to the start of the golden log file
         cpu.reg_pc = 0xc000;
 
-        for _ in 0..30 {
+        for _ in 0..30000 {
             cpu.tick(&mut mm, &mut _events);
             if cpu.cycle == 1 {
                 let out = disassemble_nestest(&cpu, &mut mm);
@@ -2756,30 +2844,11 @@ mod test {
         }
 
         if let Ok(lines) = read_lines("./test/nestest.log") {
-            for (l1, l2) in test_lines.iter().zip(lines) {
+            for (i, (l1, l2)) in test_lines.iter().zip(lines).enumerate() {
                 if let Ok(l2) = l2 {
-                    //println!("- {}\n+ {}", &l1[0..15], &l2[0..15]);
-                    //println!("- {}\n+ {}", &l1[16..48], &l2[16..48]);
-                    //println!("- {}\n+ {}", &l1[48..73], &l2[48..73]);
-
-                    assert_eq!(
-                        &l1[0..15],
-                        &l2[0..15],
-                        "Execution error @ {}",
-                        cpu.inst_count
-                    );
-                    assert_eq!(
-                        &l1[16..19],
-                        &l2[16..19],
-                        "Instruction error @ {}",
-                        cpu.inst_count
-                    );
-                    assert_eq!(
-                        &l1[48..73],
-                        &l2[48..73],
-                        "Status error @ {}",
-                        cpu.inst_count
-                    );
+                    assert_eq!(&l1[0..15], &l2[0..15], "Execution error @ {}", i);
+                    assert_eq!(&l1[16..48], &l2[16..48], "Instruction error @ {}", i);
+                    assert_eq!(&l1[48..73], &l2[48..73], "Status error @ {}", i);
                 }
             }
         }
