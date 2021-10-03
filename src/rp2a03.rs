@@ -15,9 +15,6 @@
  *
  * Used Opcode names from: http://www.oxyron.de/html/opcodes02.html
  */
-use std::thread::sleep;
-use std::time::Duration;
-
 use std::collections::VecDeque;
 use std::string::String;
 
@@ -379,7 +376,7 @@ impl Cpu6502 {
 
             internal_ram: [0u8; 2 * 1024],
 
-            trace_on: true,
+            trace_on: false,
             prev_state: (0, Instruction::Brk, 0, 0, 0, 0, 0),
         }
     }
@@ -404,6 +401,7 @@ impl Cpu6502 {
         self.reg_y = 0;
         self.reg_p = 0x34;
 
+        // To match nestest, OK?
         self.reg_p = 0b0010_0100;
 
         self.reg_s = 0xfd;
@@ -411,8 +409,6 @@ impl Cpu6502 {
         // Load the reset vector
         self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
             | self.read_u8(mm, RESET_VECTOR) as u16;
-
-        //self.reg_pc = 0xc000;
     }
 
     pub fn _irq(&mut self, level: bool) {
@@ -426,21 +422,14 @@ impl Cpu6502 {
     pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         use Instruction::*;
 
-        // if self.inst_count == 0x3000 {
-        //     sleep(Duration::from_secs(1000));
-        // }
-
         match self.cycle {
             0 => {
                 panic!("Cycle 0 is reserved");
             }
             1 => {
                 if self.trace_on && self.inst_count != 0 {
-                    println!(
-                        "{:>8}:  {}",
-                        self.inst_count,
-                        self.disassemble_nestest(mm, self.prev_state)
-                    );
+                    let c = self.disassemble_current(mm);
+                    println!("{:>8}:  {}", self.inst_count, c);
                 }
 
                 // Check for interrupts
@@ -899,7 +888,7 @@ impl Cpu6502 {
     }
 
     #[allow(dead_code)]
-    fn disassemble_current(&self, mm: &mut MemoryMap) -> String {
+    fn disassemble_current(&mut self, mm: &mut MemoryMap) -> String {
         // Disassembly info for debug
         let _b0 = self.read_u8(mm, self.reg_pc as usize);
         let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
@@ -920,82 +909,6 @@ impl Cpu6502 {
             self.reg_p,
             self.reg_s as u16 + 0x0100,
             self.stack_as_string(mm),
-        )
-    }
-
-    #[allow(dead_code)]
-    fn disassemble_current_nestest(&self, mm: &mut MemoryMap) -> String {
-        // Disassembly info for debug
-        let b0 = self.read_u8(mm, self.reg_pc as usize);
-        let b1 = self.read_u8(mm, self.reg_pc as usize + 1);
-        let b2 = self.read_u8(mm, self.reg_pc as usize + 2);
-
-        let imm_addr = (b2 as u16) << 8 | b1 as u16;
-        let cal_addr = self.addr;
-        let (name, operand, size) = self.inst.info((b1, imm_addr, cal_addr));
-        format!(
-            "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-            self.reg_pc,
-            match size {
-                1 => format!("{:02X}      ", b0),
-                2 => format!("{:02X} {:02X}   ", b0, b1),
-                3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
-                _ => panic!("Bad Size"),
-            },
-            name.to_ascii_uppercase(),
-            operand.to_ascii_uppercase(),
-            self.reg_a,
-            self.reg_x,
-            self.reg_y,
-            self.reg_p,
-            self.reg_s,
-        )
-    }
-
-    #[allow(dead_code)]
-    fn disassemble_nestest(
-        &self,
-        mm: &mut MemoryMap,
-        state: (u16, Instruction, u8, u8, u8, u8, u8),
-    ) -> String {
-        let (pc, inst, a, x, y, p, s) = state;
-
-        // Disassembly info for debug
-        let b0 = self.read_u8(mm, pc as usize);
-        let b1 = self.read_u8(mm, pc as usize + 1);
-        let b2 = self.read_u8(mm, pc as usize + 2);
-
-        let imm_addr = (b2 as u16) << 8 | b1 as u16;
-        let cal_addr = self.addr;
-        let (name, operand, size) = inst.info((b1, imm_addr, cal_addr));
-        format!(
-            "{:04X}  {}{:>5} {:32} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-            pc,
-            match size {
-                1 => format!("{:02X}      ", b0),
-                2 => format!("{:02X} {:02X}   ", b0, b1),
-                3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
-                _ => panic!("Bad Size"),
-            },
-            name.to_ascii_uppercase(),
-            match inst {
-                Instruction::Lda(_) =>
-                    operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
-                Instruction::Ldx(_) =>
-                    operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
-                Instruction::Stx(_) =>
-                    operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
-                Instruction::Sta(_) =>
-                    operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
-                Instruction::Bit(_) =>
-                    operand.to_ascii_uppercase() + &format!(" = {:02X}", self.value).to_owned(),
-                _ => operand.to_ascii_uppercase(),
-            },
-            a,
-            x,
-            y,
-            p,
-            s
         )
     }
 
@@ -2630,6 +2543,7 @@ mod test {
     use super::Cpu6502;
     use super::*;
     use crate::mem::MemoryMap;
+    use crate::rom::Rom;
 
     #[derive(Eq, PartialEq)]
     struct TestState {
@@ -2763,6 +2677,111 @@ mod test {
         let mut _events = VecDeque::new();
         for _ in 0..clks {
             cpu.tick(mm, &mut _events)
+        }
+    }
+
+    #[test]
+    fn nestest() {
+        use std::fs::File;
+        use std::io::{self, BufRead};
+        use std::path::Path;
+
+        fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+        where
+            P: AsRef<Path>,
+        {
+            let file = File::open(filename)?;
+            Ok(io::BufReader::new(file).lines())
+        }
+
+        fn disassemble_nestest(cpu: &Cpu6502, mm: &mut MemoryMap) -> String {
+            let (pc, inst, a, x, y, p, s) = cpu.prev_state;
+
+            // Disassembly info for debug
+            let b0 = cpu.read_u8(mm, pc as usize);
+            let b1 = cpu.read_u8(mm, pc as usize + 1);
+            let b2 = cpu.read_u8(mm, pc as usize + 2);
+            let imm_addr = (b2 as u16) << 8 | b1 as u16;
+            let cal_addr = cpu.addr;
+            let (name, operand, size) = inst.info((b1, imm_addr, cal_addr));
+            format!(
+                "{:04X}  {}{:>5} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+                pc,
+                match size {
+                    1 => format!("{:02X}      ", b0),
+                    2 => format!("{:02X} {:02X}   ", b0, b1),
+                    3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
+                    _ => panic!("Bad Size"),
+                },
+                name.to_ascii_uppercase(),
+                match inst {
+                    // Instruction::Lda(_) =>
+                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    // Instruction::Ldx(_) =>
+                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    // Instruction::Stx(_) =>
+                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    // Instruction::Sta(_) =>
+                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    // Instruction::Bit(_) =>
+                    //     operand.to_ascii_uppercase() + &format!(" = {:02X}", cpu.value).to_owned(),
+                    _ => operand.to_ascii_uppercase(),
+                },
+                a,
+                x,
+                y,
+                p,
+                s
+            )
+        }
+
+        let path = Path::new("./test/nestest.nes");
+        let rom = Rom::from_file(path).unwrap();
+        let mut mm = MemoryMap::new(&rom);
+        let mut cpu = Cpu6502::new();
+        let mut _events = VecDeque::new();
+
+        let mut test_lines: Vec<String> = Vec::new();
+
+        cpu.power_on_reset(&mut mm);
+
+        cpu.reg_pc = 0xc000;
+
+        for _ in 0..30 {
+            cpu.tick(&mut mm, &mut _events);
+            if cpu.cycle == 1 {
+                let out = disassemble_nestest(&cpu, &mut mm);
+                test_lines.push(out);
+            }
+        }
+
+        if let Ok(lines) = read_lines("./test/nestest.log") {
+            for (l1, l2) in test_lines.iter().zip(lines) {
+                if let Ok(l2) = l2 {
+                    //println!("- {}\n+ {}", &l1[0..15], &l2[0..15]);
+                    //println!("- {}\n+ {}", &l1[16..48], &l2[16..48]);
+                    //println!("- {}\n+ {}", &l1[48..73], &l2[48..73]);
+
+                    assert_eq!(
+                        &l1[0..15],
+                        &l2[0..15],
+                        "Execution error @ {}",
+                        cpu.inst_count
+                    );
+                    assert_eq!(
+                        &l1[16..19],
+                        &l2[16..19],
+                        "Instruction error @ {}",
+                        cpu.inst_count
+                    );
+                    assert_eq!(
+                        &l1[48..73],
+                        &l2[48..73],
+                        "Status error @ {}",
+                        cpu.inst_count
+                    );
+                }
+            }
         }
     }
 
