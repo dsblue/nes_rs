@@ -261,7 +261,6 @@ impl Instruction {
             Cmp(m) => ("cmp", m.display(o), m.size()),
             Cpx(m) => ("cpx", m.display(o), m.size()),
             Cpy(m) => ("cpy", m.display(o), m.size()),
-            Dcp(m) => ("*dcp", m.display(o), m.size()),
             Dec(m) => ("dec", m.display(o), m.size()),
             Dex => ("dex", "".to_string(), 1),
             Dey => ("dey", "".to_string(), 1),
@@ -269,10 +268,8 @@ impl Instruction {
             Inc(m) => ("inc", m.display(o), m.size()),
             Inx => ("inx", "".to_string(), 1),
             Iny => ("iny", "".to_string(), 1),
-            Isb(m) => ("*isb", m.display(o), m.size()),
             Jmp(m) => ("jmp", m.display(o), m.size()),
             Jsr(m) => ("jsr", m.display(o), m.size()),
-            Lax(m) => ("*lax", m.display(o), m.size()),
             Lda(m) => ("lda", m.display(o), m.size()),
             Ldx(m) => ("ldx", m.display(o), m.size()),
             Ldy(m) => ("ldy", m.display(o), m.size()),
@@ -284,19 +281,14 @@ impl Instruction {
             Php => ("php", "".to_string(), 1),
             Pla => ("pla", "".to_string(), 1),
             Plp => ("plp", "".to_string(), 1),
-            Rla(m) => ("rla", m.display(o), m.size()),
             Rol(m) => ("rol", m.display(o), m.size()),
             Ror(m) => ("ror", m.display(o), m.size()),
-            Rra(m) => ("rra", m.display(o), m.size()),
             Rti => ("rti", "".to_string(), 1),
             Rts => ("rts", "".to_string(), 1),
-            Sax(m) => ("*sax", m.display(o), m.size()),
             Sbc(m) => ("sbc", m.display(o), m.size()),
             Sec => ("sec", "".to_string(), 1),
             Sed => ("sed", "".to_string(), 1),
             Sei => ("sei", "".to_string(), 1),
-            Slo(m) => ("*slo", m.display(o), m.size()),
-            Sre(m) => ("*sre", m.display(o), m.size()),
             Sta(m) => ("sta", m.display(o), m.size()),
             Stx(m) => ("stx", m.display(o), m.size()),
             Sty(m) => ("sty", m.display(o), m.size()),
@@ -307,7 +299,28 @@ impl Instruction {
             Txs => ("txs", "".to_string(), 1),
             Tya => ("tya", "".to_string(), 1),
 
-            _ => ("--", "--".to_string(), 0),
+            Ahx(m) => ("ahx", m.display(o), m.size()),
+            Alr => ("alr", "".to_string(), 1),
+            Anc => ("anc", "".to_string(), 1),
+            Arr => ("arr", "".to_string(), 1),
+            Axs => ("axs", "".to_string(), 1),
+            Dcp(m) => ("*dcp", m.display(o), m.size()),
+            Isb(m) => ("*isb", m.display(o), m.size()),
+            Kil(m) => ("kil", m.display(o), m.size()),
+            Las => ("las", "".to_string(), 1),
+            Lax(m) => ("*lax", m.display(o), m.size()),
+            Rla(m) => ("rla", m.display(o), m.size()),
+            Rra(m) => ("rra", m.display(o), m.size()),
+            Sax(m) => ("*sax", m.display(o), m.size()),
+            Shx(m) => ("shx", m.display(o), m.size()),
+            Shy(m) => ("shy", m.display(o), m.size()),
+            Slo(m) => ("*slo", m.display(o), m.size()),
+            Sre(m) => ("*sre", m.display(o), m.size()),
+            Tas => ("tas", "".to_string(), 1),
+            Xaa => ("xaa", "".to_string(), 1),
+
+            Nmi => ("nmi", "".to_string(), 1),
+            Irq => ("irq", "".to_string(), 1),
         }
     }
 }
@@ -399,7 +412,7 @@ impl Cpu6502 {
         self.reg_pc = (self.read_u8(mm, RESET_VECTOR + 1) as u16) << 8
             | self.read_u8(mm, RESET_VECTOR) as u16;
 
-        self.reg_pc = 0xc000;
+        //self.reg_pc = 0xc000;
     }
 
     pub fn _irq(&mut self, level: bool) {
@@ -413,9 +426,9 @@ impl Cpu6502 {
     pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
         use Instruction::*;
 
-        if self.inst_count == 0x3000 {
-            sleep(Duration::from_secs(1000));
-        }
+        // if self.inst_count == 0x3000 {
+        //     sleep(Duration::from_secs(1000));
+        // }
 
         match self.cycle {
             0 => {
@@ -529,9 +542,9 @@ impl Cpu6502 {
                 Lax(m) => self.ex_lax(mm, m),
                 Rla(m) => self.ex_rla(mm, m),
                 Rra(m) => self.ex_rra(mm, m),
+                Sax(m) => self.ex_sax(mm, m),
                 Shx(m) => self.ex_shx(mm, m),
                 Shy(m) => self.ex_shy(mm, m),
-                Sax(m) => self.ex_sax(mm, m),
                 Slo(m) => self.ex_slo(mm, m),
                 Sre(m) => self.ex_sre(mm, m),
                 Tas => panic!("Unimplemented Opcode {:?}", self.inst),
@@ -1442,7 +1455,6 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1461,10 +1473,10 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.value = self.read_u8(mm, addr); // Value is ignored
                     self.cycle += 1;
                 }
                 5 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1483,10 +1495,10 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.value = self.read_u8(mm, addr); // Value is ignored
                     self.cycle += 1;
                 }
                 5 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1514,7 +1526,6 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1541,7 +1552,6 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1554,7 +1564,6 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1572,7 +1581,6 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1590,7 +1598,6 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
-                    self.value = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
