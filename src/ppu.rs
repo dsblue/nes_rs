@@ -85,7 +85,7 @@ impl Ppu2c02Interface {
         Ppu2c02Interface::default()
     }
 
-    pub fn update_cache(&mut self, reg: PpuRegisters, val: u8) {
+    fn update_cache(&mut self, reg: PpuRegisters, val: u8) {
         match reg {
             PpuRegisters::PpuStatus => self.ppustatus = val,
             PpuRegisters::PpuAddr => self.ppuaddr = val,
@@ -96,7 +96,7 @@ impl Ppu2c02Interface {
         }
     }
 
-    pub fn ppu_pop_read_op(&mut self) -> Option<(PpuRegisters, u8)> {
+    fn ppu_pop_read_op(&mut self) -> Option<(PpuRegisters, u8)> {
         if let Some(op) = self.read_op {
             self.read_op = None;
             Some(op)
@@ -105,7 +105,7 @@ impl Ppu2c02Interface {
         }
     }
 
-    pub fn ppu_pop_write_op(&mut self) -> Option<(PpuRegisters, u8)> {
+    fn ppu_pop_write_op(&mut self) -> Option<(PpuRegisters, u8)> {
         if let Some(op) = self.write_op {
             self.write_op = None;
             Some(op)
@@ -134,19 +134,19 @@ impl Ppu2c02Interface {
     pub fn cpu_read(&mut self, offset: u8) -> u8 {
         match offset {
             0x02 => {
-                self.read_op = Some((PpuRegisters::PpuStatus, self.ppustatus));
+                //self.read_op = Some((PpuRegisters::PpuStatus, self.ppustatus));
                 self.ppustatus
             }
             0x04 => {
-                self.read_op = Some((PpuRegisters::OamData, self.oamdata));
+                //self.read_op = Some((PpuRegisters::OamData, self.oamdata));
                 self.oamdata
             }
             0x07 => {
-                self.read_op = Some((PpuRegisters::PpuData, self.ppudata));
+                //self.read_op = Some((PpuRegisters::PpuData, self.ppudata));
                 self.ppudata
             }
             _ => {
-                self.write_op = None;
+                //self.read_op = None;
                 error!(
                     "Attempt to read from an invalid PPU register {:02x}",
                     offset
@@ -383,7 +383,7 @@ impl Ppu2c02 {
     pub fn tick(&mut self, mm: &mut MemoryMap, e: &mut VecDeque<Event>) {
         // Handle register writes placed on the bus from the CPU
         if let Some(op) = mm.ppu.ppu_pop_write_op() {
-            //info!("Write {:?}: {:02x}", op.0, op.1);
+            info!("Write {:?}: {:02x}", op.0, op.1);
             match op {
                 (PpuRegisters::PpuCtrl, v) => {
                     self.reg_ppuctrl = v;
@@ -443,7 +443,7 @@ impl Ppu2c02 {
 
         // Handle register reads placed on the bus from the CPU
         if let Some(op) = mm.ppu.ppu_pop_read_op() {
-            //info!("Read {:?}: {:02x}", op.0, op.1);
+            info!("Read {:?}: {:02x}", op.0, op.1);
             match op {
                 (PpuRegisters::PpuStatus, _) => {
                     self.got_ppuscroll = false; // reset address latch

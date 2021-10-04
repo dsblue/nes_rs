@@ -1386,8 +1386,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1409,8 +1409,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1432,8 +1432,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1460,8 +1460,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1488,8 +1488,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1501,8 +1501,8 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1519,8 +1519,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -1537,8 +1537,8 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
+                    self.debugu8 = self.read_u8(mm, addr);
                     self.write_u8(mm, addr, value);
-                    self.debugu8 = self.value;
                     self.cycle = 1;
                 }
                 _ => (),
@@ -2835,7 +2835,7 @@ mod test {
         // Jump to the start of the golden log file
         cpu.reg_pc = 0xc000;
 
-        for _ in 0..30000 {
+        for _ in 0..50000 {
             cpu.tick(&mut mm, &mut _events);
             if cpu.cycle == 1 {
                 let out = disassemble_nestest(&cpu, &mut mm);
