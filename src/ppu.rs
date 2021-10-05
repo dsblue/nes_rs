@@ -11,6 +11,7 @@
  *
  */
 use crate::mem::MemoryMap;
+//use crate::mem::MemoryMapInterface;
 use rgb::ComponentSlice;
 use rgb::RGBA8;
 use std::collections::VecDeque;
@@ -250,6 +251,8 @@ pub struct Ppu2c02 {
 
     frame_buffer: Arc<Mutex<FrameBuffer>>,
     ntsc: Vec<RGBA8>,
+
+    pub nmi: bool,
 }
 
 impl std::fmt::Debug for Ppu2c02 {
@@ -287,6 +290,129 @@ impl std::default::Default for Ppu2c02 {
             oam: [0u8; 256],
             frame_buffer: Arc::default(),
             ntsc: Vec::with_capacity(64),
+            nmi: false,
+        }
+    }
+}
+
+impl Ppu2c02 {
+    fn write_u8(&mut self, addr: usize, val: u8) {
+        match addr {
+            //0x0000..=0x0fff => mm.ppu_write_u8(addr, val),
+            //0x1000..=0x1fff => mm.ppu_write_u8(addr, val),
+            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
+            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
+            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
+            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
+            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
+            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
+            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
+            0x3f00..=0x3fff => {
+                if (0b11 & addr) == 0 {
+                    self.palette[0] = val;
+                } else {
+                    self.palette[0x1f & addr] = val;
+                }
+            }
+            _ => error!("PPU Memory write out-if-range: {:04x}", addr),
+        }
+    }
+
+    pub fn read_u8(&self, addr: usize) -> u8 {
+        match addr {
+            // 0x0000..=0x0fff => mm.ppu_read_u8(addr),
+            // 0x1000..=0x1fff => mm.ppu_read_u8(addr),
+            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
+            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
+            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize],
+            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
+            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
+            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
+            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize],
+            0x3f00..=0x3fff => {
+                if (0b11 & addr) == 0 {
+                    self.palette[0]
+                } else {
+                    self.palette[0x1f & addr]
+                }
+            }
+            _ => {
+                error!("PPU Memory write out-if-range: {:04x}", addr);
+                0xff
+            }
+        }
+    }
+
+    pub fn cpu_write(&mut self, mm: &mut MemoryMap, offset: u8, val: u8) {
+        match offset {            
+            0x00 => self.reg_ppuctrl = val,
+            0x01 => self.reg_ppumask = val,
+            0x03 => self.reg_oamaddr = val,
+            0x04 => {
+                self.reg_oamdata = val;
+                self.oam[self.reg_oamaddr as usize] = val;
+                self.reg_oamaddr = self.reg_oamaddr.wrapping_add(1);
+            }
+            0x05 => {
+                if self.got_ppuscroll {
+                    self.scroll_y = val;
+                } else {
+                    self.scroll_x = val;
+                }
+                self.got_ppuscroll = !self.got_ppuscroll;
+            }
+            0x06 => {
+                if self.got_ppuaddr {
+                    self.ppu_addr = self.ppu_addr_temp | val as u16;
+                } else {
+                    // It could be that this should be stored in a temporary var
+                    // until the full address is ready, but I think not.
+                    self.ppu_addr_temp = (0x3f & val as u16) << 8;
+                }
+                self.got_ppuaddr = !self.got_ppuaddr;
+            }
+            0x07 => {
+                self.reg_ppudata = val;
+                info!("{:02x} -> {:04x}", val, self.ppu_addr);
+                self.write_u8(mm, self.ppu_addr as usize, val);
+                if (self.reg_ppuctrl & PPUCTRL_I) == 0 {
+                    self.ppu_addr = self.ppu_addr.wrapping_add(1) & 0x3fff;
+                } else {
+                    self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
+                }
+            }
+            0x14 => self.reg_oamdma = val,
+            _ => {
+                error!("Attempt to write to an invalid PPU register {:02x}", offset);
+            }
+        }
+    }
+
+    pub fn cpu_read(&mut self, mm: &mut MemoryMap, offset: u8) -> u8 {
+        match offset {
+            0x02 => {
+                self.got_ppuscroll = false; // reset address latch
+                self.got_ppuaddr = false; // reset address latch
+                self.reg_ppustatus &= !PPUCTRL_V; // Clear V
+                self.reg_ppustatus
+            }
+            0x04 => self.reg_oamdata,
+            0x07 => {
+                if (self.reg_ppuctrl & PPUCTRL_I) == 0 {
+                    self.ppu_addr = self.ppu_addr.wrapping_add(1) & 0x3fff;
+                } else {
+                    self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
+                }
+                self.reg_ppudata = self.read_u8(mm, self.ppu_addr as usize);
+                self.reg_ppudata
+            }
+            _ => {
+                error!(
+                    "Attempt to read from an invalid PPU register {:02x}", offset);
+                0
+            }
         }
     }
 }
@@ -331,141 +457,7 @@ impl Ppu2c02 {
         self.count = 0;
     }
 
-    fn write_u8(&mut self, mm: &mut MemoryMap, addr: usize, val: u8) {
-        match addr {
-            0x0000..=0x0fff => mm.ppu_write_u8(addr, val),
-            0x1000..=0x1fff => mm.ppu_write_u8(addr, val),
-            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
-            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
-            0x3f00..=0x3fff => {
-                if (0b11 & addr) == 0 {
-                    self.palette[0] = val;
-                } else {
-                    self.palette[0x1f & addr] = val;
-                }
-            }
-            _ => error!("PPU Memory write out-if-range: {:04x}", addr),
-        }
-    }
-
-    fn read_u8(&self, mm: &MemoryMap, addr: usize) -> u8 {
-        match addr {
-            0x0000..=0x0fff => mm.ppu_read_u8(addr),
-            0x1000..=0x1fff => mm.ppu_read_u8(addr),
-            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize],
-            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize],
-            0x3f00..=0x3fff => {
-                if (0b11 & addr) == 0 {
-                    self.palette[0]
-                } else {
-                    self.palette[0x1f & addr]
-                }
-            }
-            _ => {
-                error!("PPU Memory write out-if-range: {:04x}", addr);
-                0xff
-            }
-        }
-    }
-
     pub fn tick(&mut self, mm: &mut MemoryMap, e: &mut VecDeque<Event>) {
-        // Handle register writes placed on the bus from the CPU
-        if let Some(op) = mm.ppu.ppu_pop_write_op() {
-            info!("Write {:?}: {:02x}", op.0, op.1);
-            match op {
-                (PpuRegisters::PpuCtrl, v) => {
-                    self.reg_ppuctrl = v;
-                }
-                (PpuRegisters::PpuMask, v) => {
-                    self.reg_ppumask = v;
-                }
-                (PpuRegisters::PpuScroll, v) => {
-                    if self.got_ppuscroll {
-                        self.scroll_y = v;
-                    } else {
-                        self.scroll_x = v;
-                    }
-                    self.got_ppuscroll = !self.got_ppuscroll;
-                }
-                (PpuRegisters::PpuAddr, v) => {
-                    if self.got_ppuaddr {
-                        self.ppu_addr = self.ppu_addr_temp | v as u16;
-                    } else {
-                        // It could be that this should be stored in a temporary var
-                        // until the full address is ready, but I think not.
-                        self.ppu_addr_temp = (0x3f & v as u16) << 8;
-                    }
-                    self.got_ppuaddr = !self.got_ppuaddr;
-
-                    let t = self.read_u8(mm, self.ppu_addr as usize);
-                    mm.ppu.update_cache(PpuRegisters::PpuData, t);
-                }
-                (PpuRegisters::PpuData, v) => {
-                    self.reg_ppudata = v;
-                    info!("{:02x} -> {:04x}", v, self.ppu_addr);
-                    self.write_u8(mm, self.ppu_addr as usize, v);
-                    if (self.reg_ppuctrl & PPUCTRL_I) == 0 {
-                        self.ppu_addr = self.ppu_addr.wrapping_add(1) & 0x3fff;
-                    } else {
-                        self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
-                    }
-                    let t = self.read_u8(mm, self.ppu_addr as usize);
-                    mm.ppu.update_cache(PpuRegisters::PpuData, t);
-                }
-                (PpuRegisters::OamAddr, v) => {
-                    self.reg_oamaddr = v;
-                }
-                (PpuRegisters::OamData, v) => {
-                    self.reg_oamdata = v;
-                    self.oam[self.reg_oamaddr as usize] = v;
-                    self.reg_oamaddr = self.reg_oamaddr.wrapping_add(1);
-                    mm.ppu
-                        .update_cache(PpuRegisters::OamData, self.oam[self.reg_oamaddr as usize]);
-                }
-                (PpuRegisters::OamDma, v) => {
-                    self.reg_oamdma = v;
-                }
-                _ => error!("Invalid Write attempt to {:?}: {:02x}", op.0, op.1),
-            }
-        }
-
-        // Handle register reads placed on the bus from the CPU
-        if let Some(op) = mm.ppu.ppu_pop_read_op() {
-            info!("Read {:?}: {:02x}", op.0, op.1);
-            match op {
-                (PpuRegisters::PpuStatus, _) => {
-                    self.got_ppuscroll = false; // reset address latch
-                    self.got_ppuaddr = false; // reset address latch
-                    self.reg_ppustatus &= !PPUCTRL_V; // Clear V
-                    mm.ppu
-                        .update_cache(PpuRegisters::PpuStatus, self.reg_ppustatus);
-                }
-                (PpuRegisters::PpuData, _) => {
-                    if (self.reg_ppuctrl & PPUCTRL_I) == 0 {
-                        self.ppu_addr = self.ppu_addr.wrapping_add(1) & 0x3fff;
-                    } else {
-                        self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
-                    }
-                    let t = self.read_u8(mm, self.ppu_addr as usize);
-                    mm.ppu.update_cache(PpuRegisters::PpuData, t);
-                }
-                (PpuRegisters::OamData, _) => {}
-                _ => error!("Invalid Read attempt to {:?}: {:02x}", op.0, op.1),
-            }
-        }
-
         let mut render = false;
 
         match self.scanline {
@@ -479,10 +471,8 @@ impl Ppu2c02 {
             241 => {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
-                    mm.ppu
-                        .update_cache(PpuRegisters::PpuStatus, self.reg_ppustatus);
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
-                        mm.ppu.nmi = true;
+                        self.nmi = true;
                     }
 
                     render = true;
@@ -494,8 +484,6 @@ impl Ppu2c02 {
             261 => {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus & !PPUSTATUS_VBLANK;
-                    mm.ppu
-                        .update_cache(PpuRegisters::PpuStatus, self.reg_ppustatus);
                 }
             }
             _ => (),

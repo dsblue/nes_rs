@@ -1,14 +1,11 @@
-use crate::ppu::Ppu2c02Interface;
-//use crate::Event;
+use crate::rp2a03::Cpu6502;
+use crate::ppu::Ppu2c02;
 use crate::Rom;
-//use std::collections::VecDeque;
 use std::fmt;
 
 pub trait MemoryMapInterface {
     fn read_u8(&self, address: usize) -> u8;
-    fn read_u16(&self, offset: usize) -> u16;
     fn write_u8(&mut self, address: usize, value: u8);
-    fn write_u16(&mut self, offset: usize, val: u16);
 }
 
 impl fmt::Debug for dyn MemoryMapInterface {
@@ -26,31 +23,12 @@ impl MemoryMapInterface for RegionType {
     fn read_u8(&self, offset: usize) -> u8 {
         match self {
             RegionType::Rom { data } => data[offset],
-            //RegionType::Ram { data } => data[offset],
-        }
-    }
-
-    fn read_u16(&self, offset: usize) -> u16 {
-        match self {
-            RegionType::Rom { data } => (data[offset] as u16 | (data[offset + 1] as u16) << 8),
-            //RegionType::Ram { data } => (data[offset] as u16 | (data[offset + 1] as u16) << 8),
         }
     }
 
     fn write_u8(&mut self, _offset: usize, _val: u8) {
         match self {
-            RegionType::Rom { data: _ } => {} //RegionType::Ram { data } => {
-                                              //   data[offset] = val;
-                                              //}
-        }
-    }
-
-    fn write_u16(&mut self, _offset: usize, _val: u16) {
-        match self {
-            RegionType::Rom { data: _ } => {} //RegionType::Ram { data } => {
-                                              //    data[offset] = (val >> 8) as u8;
-                                              //    data[offset + 1] = (val & 0xff) as u8;
-                                              //}
+            RegionType::Rom { data: _ } => {} 
         }
     }
 }
@@ -68,9 +46,10 @@ impl<'a> fmt::Debug for Region {
 }
 
 pub struct MemoryMap {
+    cpu: Cpu6502,
+    ppu: Ppu2c02,
     prg_regions: Vec<Region>,
     chr_regions: Vec<Region>,
-    pub ppu: Ppu2c02Interface,
 }
 
 impl<'a> fmt::Debug for MemoryMap {
@@ -80,11 +59,12 @@ impl<'a> fmt::Debug for MemoryMap {
 }
 
 impl<'a> MemoryMap {
-    pub fn new(rom: &Rom) -> MemoryMap {
+    pub fn new(rom: &Rom, cpu: Cpu6502, ppu: Ppu2c02) -> MemoryMap {
         let mut mm = MemoryMap {
+            cpu: cpu,
+            ppu: ppu,
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
-            ppu: Ppu2c02Interface::new(),
         };
 
         // Build the rest of the memory map based on the mapper value
@@ -145,7 +125,15 @@ impl<'a> MemoryMap {
                 return r.region.read_u8(address - r.start);
             }
         }
-        error!("Memory address not mapped: {:04x}", address);
+        match address {
+            0x2000..=0x3fff => {
+                // PPU Registers
+                return self.ppu.read_u8(address & 0b111)
+            }
+            _ => {
+                error!("Memory address not mapped: {:04x}", address);
+            }
+        }
         0
     }
 
@@ -182,7 +170,8 @@ impl<'a> MemoryMap {
         MemoryMap {
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
-            ppu: Ppu2c02Interface::new(),
+            cpu: Cpu6502::new(),
+            ppu: Ppu2c02::new(),
         }
     }
 }

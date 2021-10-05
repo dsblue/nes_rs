@@ -3,7 +3,6 @@ extern crate log;
 extern crate clap;
 use clap::App;
 use pixels::{Error, Pixels, SurfaceTexture};
-//use read_input::prelude::*;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::thread;
@@ -96,9 +95,9 @@ fn run(rom: Rom) -> Result<(), Error> {
         let frame = Arc::clone(&frame);
 
         thread::spawn(move || {
-            let mut mm = MemoryMap::new(&rom);
             let mut cpu = Cpu6502::new();
             let mut ppu = Ppu2c02::new();
+            let mut mm = MemoryMap::new(&rom, cpu, ppu);
 
             ppu.set_framebuffer(frame);
 
@@ -115,8 +114,8 @@ fn run(rom: Rom) -> Result<(), Error> {
                     ppu.tick(&mut mm, &mut events);
                     ppu.tick(&mut mm, &mut events);
 
-                    if mm.ppu.nmi {
-                        mm.ppu.nmi = false;
+                    if ppu.nmi {
+                        ppu.nmi = false;
                         cpu.nmi();
                     }
 

@@ -555,10 +555,6 @@ impl Cpu6502 {
                 // 2KB internal RAM mirrored x 4
                 self.internal_ram[0x07ff & addr]
             }
-            0x2000..=0x3fff => {
-                // PPU Registers
-                mm.ppu.cpu_read((addr & 0b111) as u8)
-            }
             0x4000..=0x401f => {
                 // NES APU and IO registers
                 warn!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
@@ -573,10 +569,6 @@ impl Cpu6502 {
             0x0000..=0x1fff => {
                 // 2KB internal RAM mirrored x 4
                 self.internal_ram[0x07ff & addr] = val;
-            }
-            0x2000..=0x3fff => {
-                // PPU Registers
-                mm.ppu.cpu_write((addr & 0b111) as u8, val);
             }
             0x4000..=0x401f => {
                 // NES APU and IO registers
@@ -2713,6 +2705,7 @@ mod test {
         use std::fs::File;
         use std::io::{self, BufRead};
         use std::path::Path;
+        use crate::ppu::Ppu2c02;
 
         fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
         where
@@ -2824,8 +2817,9 @@ mod test {
 
         let path = Path::new("./test/nestest.nes");
         let rom = Rom::from_file(path).unwrap();
-        let mut mm = MemoryMap::new(&rom);
         let mut cpu = Cpu6502::new();
+        let mut ppu = Ppu2c02::new();
+        let mut mm = MemoryMap::new(&rom, cpu, ppu);
         let mut _events = VecDeque::new();
 
         let mut test_lines: Vec<String> = Vec::new();
