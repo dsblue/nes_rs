@@ -549,6 +549,21 @@ impl Cpu6502 {
         self.cycle_count += 1;
     }
 
+    fn peek_u8(&self, mm: &mut MemoryMap, addr: usize) -> u8 {
+        match addr {
+            0x0000..=0x1fff => {
+                // 2KB internal RAM mirrored x 4
+                self.internal_ram[0x07ff & addr]
+            }
+            0x4000..=0x401f => {
+                // NES APU and IO registers
+                warn!("APU Not implemented: Read APU:0x{:04x}", (addr - 0x4000));
+                0xff
+            }
+            _ => mm.cpu_peek_u8(addr),
+        }
+    }
+
     fn read_u8(&self, mm: &mut MemoryMap, addr: usize) -> u8 {
         match addr {
             0x0000..=0x1fff => {
@@ -847,7 +862,7 @@ impl Cpu6502 {
     }
 
     #[allow(dead_code)]
-    pub fn disassemble(mm: &MemoryMap, address: usize, num: usize) -> String {
+    pub fn disassemble(mm: &mut MemoryMap, address: usize, num: usize) -> String {
         let mut s = String::new();
         let mut address = address;
 
@@ -1378,7 +1393,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 4 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1401,7 +1416,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1424,7 +1439,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 5 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1452,7 +1467,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1480,7 +1495,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 6 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1493,7 +1508,7 @@ impl Cpu6502 {
                     self.cycle += 1;
                 }
                 3 => {
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1511,7 +1526,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpx");
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -1529,7 +1544,7 @@ impl Cpu6502 {
                 }
                 4 => {
                     debug_assert!((addr & 0xff00) == 0, "Error with zpy");
-                    self.debugu8 = self.read_u8(mm, addr);
+                    self.debugu8 = self.peek_u8(mm, addr);
                     self.write_u8(mm, addr, value);
                     self.cycle = 1;
                 }
@@ -2818,8 +2833,8 @@ mod test {
         let path = Path::new("./test/nestest.nes");
         let rom = Rom::from_file(path).unwrap();
         let mut cpu = Cpu6502::new();
-        let mut ppu = Ppu2c02::new();
-        let mut mm = MemoryMap::new(&rom, cpu, ppu);
+        let ppu = Ppu2c02::new(rom.chr_rom.to_owned());
+        let mut mm = MemoryMap::new(&rom, ppu);
         let mut _events = VecDeque::new();
 
         let mut test_lines: Vec<String> = Vec::new();

@@ -10,8 +10,6 @@
  *
  *
  */
-use crate::mem::MemoryMap;
-//use crate::mem::MemoryMapInterface;
 use rgb::ComponentSlice;
 use rgb::RGBA8;
 use std::collections::VecDeque;
@@ -37,22 +35,23 @@ const PPUSTATUS_VBLANK: u8 = 0x80;
 
 #[derive(Debug)]
 pub enum Event {
-    _Reset,
+    Reset,
     VBlank,
+    Nmi,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum PpuRegisters {
-    PpuCtrl,   // write
-    PpuStatus, // read
-    PpuMask,   // write
-    PpuScroll, // write x2
-    PpuAddr,   // write x2
-    PpuData,   // read/write
-    OamAddr,   // write
-    OamData,   // read/write
-    OamDma,    // write
-}
+// #[derive(Debug, Copy, Clone)]
+// pub enum PpuRegisters {
+//     PpuCtrl,   // write
+//     PpuStatus, // read
+//     PpuMask,   // write
+//     PpuScroll, // write x2
+//     PpuAddr,   // write x2
+//     PpuData,   // read/write
+//     OamAddr,   // write
+//     OamData,   // read/write
+//     OamDma,    // write
+// }
 
 #[derive(Debug)]
 enum PpuState {
@@ -63,98 +62,6 @@ enum PpuState {
 impl Default for PpuState {
     fn default() -> PpuState {
         PpuState::WarmUp
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Ppu2c02Interface {
-    pub nmi: bool,
-
-    read_op: Option<(PpuRegisters, u8)>,
-    write_op: Option<(PpuRegisters, u8)>,
-
-    // Cache values for reads
-    ppustatus: u8,
-    ppuaddr: u8,
-    ppudata: u8,
-    oamdata: u8,
-    oamdma: u8,
-}
-
-impl Ppu2c02Interface {
-    pub fn new() -> Ppu2c02Interface {
-        Ppu2c02Interface::default()
-    }
-
-    fn update_cache(&mut self, reg: PpuRegisters, val: u8) {
-        match reg {
-            PpuRegisters::PpuStatus => self.ppustatus = val,
-            PpuRegisters::PpuAddr => self.ppuaddr = val,
-            PpuRegisters::PpuData => self.ppudata = val,
-            PpuRegisters::OamData => self.oamdata = val,
-            PpuRegisters::OamDma => self.oamdma = val,
-            _ => (),
-        }
-    }
-
-    fn ppu_pop_read_op(&mut self) -> Option<(PpuRegisters, u8)> {
-        if let Some(op) = self.read_op {
-            self.read_op = None;
-            Some(op)
-        } else {
-            None
-        }
-    }
-
-    fn ppu_pop_write_op(&mut self) -> Option<(PpuRegisters, u8)> {
-        if let Some(op) = self.write_op {
-            self.write_op = None;
-            Some(op)
-        } else {
-            None
-        }
-    }
-
-    pub fn cpu_write(&mut self, offset: u8, val: u8) {
-        match offset {
-            0x00 => self.write_op = Some((PpuRegisters::PpuCtrl, val)),
-            0x01 => self.write_op = Some((PpuRegisters::PpuMask, val)),
-            0x03 => self.write_op = Some((PpuRegisters::OamAddr, val)),
-            0x04 => self.write_op = Some((PpuRegisters::OamData, val)),
-            0x05 => self.write_op = Some((PpuRegisters::PpuScroll, val)),
-            0x06 => self.write_op = Some((PpuRegisters::PpuAddr, val)),
-            0x07 => self.write_op = Some((PpuRegisters::PpuData, val)),
-            0x14 => self.write_op = Some((PpuRegisters::OamDma, val)),
-            _ => {
-                self.write_op = None;
-                error!("Attempt to write to an invalid PPU register {:02x}", offset);
-            }
-        }
-    }
-
-    pub fn cpu_read(&mut self, offset: u8) -> u8 {
-        match offset {
-            0x02 => {
-                //self.read_op = Some((PpuRegisters::PpuStatus, self.ppustatus));
-                self.ppustatus
-            }
-            0x04 => {
-                //self.read_op = Some((PpuRegisters::OamData, self.oamdata));
-                self.oamdata
-            }
-            0x07 => {
-                //self.read_op = Some((PpuRegisters::PpuData, self.ppudata));
-                self.ppudata
-            }
-            _ => {
-                //self.read_op = None;
-                error!(
-                    "Attempt to read from an invalid PPU register {:02x}",
-                    offset
-                );
-                0
-            }
-        }
     }
 }
 
@@ -183,7 +90,7 @@ impl std::default::Default for FrameBuffer {
 }
 
 struct Nametable {
-    _data: [u8; 0x400],
+    data: [u8; 0x400],
 }
 
 impl std::fmt::Debug for Nametable {
@@ -195,29 +102,12 @@ impl std::fmt::Debug for Nametable {
 impl std::default::Default for Nametable {
     fn default() -> Self {
         Nametable {
-            _data: [0u8; 0x400],
+            data: [0u8; 0x400],
         }
     }
 }
 
-//#[derive(Debug, Default)]
-//struct Palette {
-//    data: [u8; 0x1f],
-//}
-
 type Palette = [u8; 0x20];
-
-//impl std::fmt::Debug for Palette {
-//    fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//        Ok(())
-//    }
-//}
-
-//impl std::default::Default for Palette {
-//    fn default() -> Self {
-//        Palette { _data: [0u8; 0x20] }
-//    }
-//}
 
 type Oam = [u8; 256];
 
@@ -244,6 +134,7 @@ pub struct Ppu2c02 {
 
     count: u64,
 
+    chr_rom: Vec<u8>,
     nametables: [Nametable; 4],
     palette: Palette,
 
@@ -252,7 +143,7 @@ pub struct Ppu2c02 {
     frame_buffer: Arc<Mutex<FrameBuffer>>,
     ntsc: Vec<RGBA8>,
 
-    pub nmi: bool,
+//    pub nmi: bool,
 }
 
 impl std::fmt::Debug for Ppu2c02 {
@@ -280,6 +171,7 @@ impl std::default::Default for Ppu2c02 {
             scroll_x: 0,
             scroll_y: 0,
             count: 0,
+            chr_rom: Vec::new(),
             nametables: [
                 Nametable::default(),
                 Nametable::default(),
@@ -290,7 +182,7 @@ impl std::default::Default for Ppu2c02 {
             oam: [0u8; 256],
             frame_buffer: Arc::default(),
             ntsc: Vec::with_capacity(64),
-            nmi: false,
+//            nmi: false,
         }
     }
 }
@@ -298,16 +190,16 @@ impl std::default::Default for Ppu2c02 {
 impl Ppu2c02 {
     fn write_u8(&mut self, addr: usize, val: u8) {
         match addr {
-            //0x0000..=0x0fff => mm.ppu_write_u8(addr, val),
-            //0x1000..=0x1fff => mm.ppu_write_u8(addr, val),
-            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
-            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize] = val,
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize] = val,
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize] = val,
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize] = val,
+            0x0000..=0x0fff => self.chr_rom[addr & 0x1fff] = val,
+            0x1000..=0x1fff => self.chr_rom[addr & 0x1fff] = val,
+            0x2000..=0x23ff => self.nametables[0].data[(addr & 0x3ff) as usize] = val,
+            0x2400..=0x27ff => self.nametables[1].data[(addr & 0x3ff) as usize] = val,
+            0x2800..=0x2bff => self.nametables[2].data[(addr & 0x3ff) as usize] = val,
+            0x2c00..=0x2fff => self.nametables[3].data[(addr & 0x3ff) as usize] = val,
+            0x3000..=0x33ff => self.nametables[0].data[(addr & 0x3ff) as usize] = val,
+            0x3400..=0x37ff => self.nametables[1].data[(addr & 0x3ff) as usize] = val,
+            0x3800..=0x3bff => self.nametables[2].data[(addr & 0x3ff) as usize] = val,
+            0x3c00..=0x3eff => self.nametables[3].data[(addr & 0x3ff) as usize] = val,
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
                     self.palette[0] = val;
@@ -319,18 +211,18 @@ impl Ppu2c02 {
         }
     }
 
-    pub fn read_u8(&self, addr: usize) -> u8 {
+    fn read_u8(&self, addr: usize) -> u8 {
         match addr {
-            // 0x0000..=0x0fff => mm.ppu_read_u8(addr),
-            // 0x1000..=0x1fff => mm.ppu_read_u8(addr),
-            0x2000..=0x23ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x2400..=0x27ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x2800..=0x2bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x2c00..=0x2fff => self.nametables[3]._data[(addr & 0x3ff) as usize],
-            0x3000..=0x33ff => self.nametables[0]._data[(addr & 0x3ff) as usize],
-            0x3400..=0x37ff => self.nametables[1]._data[(addr & 0x3ff) as usize],
-            0x3800..=0x3bff => self.nametables[2]._data[(addr & 0x3ff) as usize],
-            0x3c00..=0x3eff => self.nametables[3]._data[(addr & 0x3ff) as usize],
+            0x0000..=0x0fff => self.chr_rom[addr & 0x1fff],
+            0x1000..=0x1fff => self.chr_rom[addr & 0x1fff],
+            0x2000..=0x23ff => self.nametables[0].data[(addr & 0x3ff) as usize],
+            0x2400..=0x27ff => self.nametables[1].data[(addr & 0x3ff) as usize],
+            0x2800..=0x2bff => self.nametables[2].data[(addr & 0x3ff) as usize],
+            0x2c00..=0x2fff => self.nametables[3].data[(addr & 0x3ff) as usize],
+            0x3000..=0x33ff => self.nametables[0].data[(addr & 0x3ff) as usize],
+            0x3400..=0x37ff => self.nametables[1].data[(addr & 0x3ff) as usize],
+            0x3800..=0x3bff => self.nametables[2].data[(addr & 0x3ff) as usize],
+            0x3c00..=0x3eff => self.nametables[3].data[(addr & 0x3ff) as usize],
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
                     self.palette[0]
@@ -345,10 +237,11 @@ impl Ppu2c02 {
         }
     }
 
-    pub fn cpu_write(&mut self, mm: &mut MemoryMap, offset: u8, val: u8) {
+    pub fn write_reg(&mut self, offset: u8, val: u8) {
         match offset {            
             0x00 => self.reg_ppuctrl = val,
             0x01 => self.reg_ppumask = val,
+            0x02 => (),
             0x03 => self.reg_oamaddr = val,
             0x04 => {
                 self.reg_oamdata = val;
@@ -376,21 +269,42 @@ impl Ppu2c02 {
             0x07 => {
                 self.reg_ppudata = val;
                 info!("{:02x} -> {:04x}", val, self.ppu_addr);
-                self.write_u8(mm, self.ppu_addr as usize, val);
+                self.write_u8(self.ppu_addr as usize, val);
                 if (self.reg_ppuctrl & PPUCTRL_I) == 0 {
                     self.ppu_addr = self.ppu_addr.wrapping_add(1) & 0x3fff;
                 } else {
                     self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
                 }
             }
-            0x14 => self.reg_oamdma = val,
             _ => {
                 error!("Attempt to write to an invalid PPU register {:02x}", offset);
             }
         }
     }
 
-    pub fn cpu_read(&mut self, mm: &mut MemoryMap, offset: u8) -> u8 {
+    pub fn write_oamdma(&mut self, val: u8) {
+        self.reg_oamdma = val;
+    }
+
+    pub fn peek_reg(&mut self, offset: u8) -> u8 {
+        match offset {
+            0x00 => self.reg_ppuctrl,
+            0x01 => self.reg_ppumask,
+            0x02 => self.reg_ppustatus,
+            0x03 => self.reg_oamaddr,
+            0x04 => self.reg_oamdata,
+            0x05 => 0xff,
+            0x06 => 0xff,
+            0x07 => self.reg_ppudata,
+            _ => {
+                error!(
+                    "Attempt to read from an invalid PPU register {:02x}", offset);
+                0xff
+            }
+        }
+    }
+
+    pub fn read_reg(&mut self, offset: u8) -> u8 {
         match offset {
             0x02 => {
                 self.got_ppuscroll = false; // reset address latch
@@ -405,20 +319,20 @@ impl Ppu2c02 {
                 } else {
                     self.ppu_addr = self.ppu_addr.wrapping_add(32) & 0x3fff;
                 }
-                self.reg_ppudata = self.read_u8(mm, self.ppu_addr as usize);
+                self.reg_ppudata = self.read_u8(self.ppu_addr as usize);
                 self.reg_ppudata
             }
             _ => {
                 error!(
                     "Attempt to read from an invalid PPU register {:02x}", offset);
-                0
+                0xff
             }
         }
     }
 }
 
 impl Ppu2c02 {
-    pub fn new() -> Ppu2c02 {
+    pub fn new(chr_rom: Vec<u8>) -> Ppu2c02 {
         let mut p = Ppu2c02::default();
 
         let mut file = match File::open("default.pal") {
@@ -440,6 +354,8 @@ impl Ppu2c02 {
                 a: 0xff,
             });
         }
+        p.chr_rom = chr_rom;
+
         p
     }
 
@@ -447,17 +363,17 @@ impl Ppu2c02 {
         self.frame_buffer = frame_buffer;
     }
 
-    pub fn reset(&mut self) {
+    pub fn _reset(&mut self) {
         info!("Reset PPU");
         self.count = 0;
     }
 
-    pub fn power_on_reset(&mut self) {
+    pub fn _power_on_reset(&mut self) {
         info!("Power Cycle PPU");
         self.count = 0;
     }
 
-    pub fn tick(&mut self, mm: &mut MemoryMap, e: &mut VecDeque<Event>) {
+    pub fn tick(&mut self, e: &mut VecDeque<Event>) {
         let mut render = false;
 
         match self.scanline {
@@ -472,7 +388,10 @@ impl Ppu2c02 {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
-                        self.nmi = true;
+//                        self.nmi = true;
+                        info!("NMI...");
+
+                        e.push_back(Event::Nmi);
                     }
 
                     render = true;
@@ -500,13 +419,13 @@ impl Ppu2c02 {
                 let col = i % VISIBLE_WIDTH;
 
                 let name_i = (col / 8) + (32 * (row / 8));
-                let name = self.nametables[nt]._data[name_i] as usize;
+                let name = self.nametables[nt].data[name_i] as usize;
                 let line = row & 0x7;
-                let bp1 = mm.ppu_read_u8(pattern + (name << 4) + 0 + line) as usize;
-                let bp2 = mm.ppu_read_u8(pattern + (name << 4) + 8 + line) as usize;
+                let bp1 = self.read_u8(pattern + (name << 4) + 0 + line) as usize;
+                let bp2 = self.read_u8(pattern + (name << 4) + 8 + line) as usize;
                 let index = (bp1 >> (0x7 - (0x7 & i)) & 1) + ((bp2 >> (0x7 - (0x7 & i)) & 1) << 1);
 
-                let attrib = self.nametables[nt]._data[0x3c0 + (col / 32) + (row / 32) * 8];
+                let attrib = self.nametables[nt].data[0x3c0 + (col / 32) + (row / 32) * 8];
                 let quad = match (row & 0x10, col & 0x10) {
                     (0, 0) => 0,
                     (0, 0x10) => 2,
@@ -534,16 +453,16 @@ impl Ppu2c02 {
                     for col in 0..8 {
                         print!(
                             "{}{}|",
-                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 0 & 0x3,
-                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 2 & 0x3,
+                            self.nametables[nt].data[0x3c0 + row * 8 + col] >> 0 & 0x3,
+                            self.nametables[nt].data[0x3c0 + row * 8 + col] >> 2 & 0x3,
                         );
                     }
                     print!("\n|");
                     for col in 0..8 {
                         print!(
                             "{}{}|",
-                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 4 & 0x3,
-                            self.nametables[nt]._data[0x3c0 + row * 8 + col] >> 6 & 0x3,
+                            self.nametables[nt].data[0x3c0 + row * 8 + col] >> 4 & 0x3,
+                            self.nametables[nt].data[0x3c0 + row * 8 + col] >> 6 & 0x3,
                         );
                     }
                     print!("\n");

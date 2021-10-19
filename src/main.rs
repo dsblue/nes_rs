@@ -96,37 +96,38 @@ fn run(rom: Rom) -> Result<(), Error> {
 
         thread::spawn(move || {
             let mut cpu = Cpu6502::new();
-            let mut ppu = Ppu2c02::new();
-            let mut mm = MemoryMap::new(&rom, cpu, ppu);
-
+            let mut ppu = Ppu2c02::new(rom.chr_rom.to_owned());
             ppu.set_framebuffer(frame);
 
+            let mut mm = MemoryMap::new(&rom, ppu);
+
             let mut events: VecDeque<ppu::Event> = VecDeque::new();
-            //events.push_front(ppu::Event::Reset);
+            events.push_front(ppu::Event::Reset);
 
             cpu.power_on_reset(&mut mm);
-            ppu.power_on_reset();
+            //ppu.power_on_reset();
 
             loop {
                 for _ in 0..10_000 {
                     cpu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-
-                    if ppu.nmi {
-                        ppu.nmi = false;
-                        cpu.nmi();
-                    }
+                    mm.tick_ppu(&mut events);
+                    mm.tick_ppu(&mut events);
+                    mm.tick_ppu(&mut events);
 
                     // Handle any generated events
                     while let Some(e) = events.pop_back() {
                         match e {
-                            ppu::Event::_Reset => {
+                            ppu::Event::Reset => {
                                 cpu.reset(&mut mm);
-                                ppu.reset();
+                                //ppu.reset();
                             }
-                            _ => {}
+                            ppu::Event::Nmi => {
+                                info!("NMI-");
+                                cpu.nmi();
+                            }
+                            ppu::Event::VBlank => {
+                                ()
+                            }
                         }
                     }
 

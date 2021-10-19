@@ -1,7 +1,8 @@
-use crate::rp2a03::Cpu6502;
 use crate::ppu::Ppu2c02;
 use crate::Rom;
 use std::fmt;
+use std::collections::VecDeque;
+use crate::ppu::Event;
 
 pub trait MemoryMapInterface {
     fn read_u8(&self, address: usize) -> u8;
@@ -46,8 +47,7 @@ impl<'a> fmt::Debug for Region {
 }
 
 pub struct MemoryMap {
-    cpu: Cpu6502,
-    ppu: Ppu2c02,
+    pub ppu: Ppu2c02,
     prg_regions: Vec<Region>,
     chr_regions: Vec<Region>,
 }
@@ -59,9 +59,8 @@ impl<'a> fmt::Debug for MemoryMap {
 }
 
 impl<'a> MemoryMap {
-    pub fn new(rom: &Rom, cpu: Cpu6502, ppu: Ppu2c02) -> MemoryMap {
+    pub fn new(rom: &Rom, ppu: Ppu2c02) -> MemoryMap {
         let mut mm = MemoryMap {
-            cpu: cpu,
             ppu: ppu,
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
@@ -119,50 +118,66 @@ impl<'a> MemoryMap {
         mm
     }
 
-    pub fn cpu_read_u8(&self, address: usize) -> u8 {
-        for r in &self.prg_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.read_u8(address - r.start);
-            }
-        }
+    pub fn tick_ppu(&mut self, e: &mut VecDeque<Event>) {
+        self.ppu.tick(e);
+    }
+
+    pub fn cpu_peek_u8(&mut self, address: usize) -> u8 {
         match address {
             0x2000..=0x3fff => {
                 // PPU Registers
-                return self.ppu.read_u8(address & 0b111)
+                self.ppu.peek_reg((address & 0b111) as u8) 
             }
             _ => {
-                error!("Memory address not mapped: {:04x}", address);
+                error!("Memory address not peek-able: {:04x}", address);     
+                0
             }
         }
-        0
+    }
+
+    pub fn cpu_read_u8(&mut self, address: usize) -> u8 {
+        match address {
+            0x2000..=0x3fff => {
+                // PPU Registers
+                self.ppu.read_reg((address & 0b111) as u8) 
+            }
+            0x4000..=0x401f => {
+                // IO Registers
+                0xff
+            }
+            _ => {
+                for r in &self.prg_regions {
+                    if address >= r.start && address < r.start + r.size {
+                        return r.region.read_u8(address - r.start);
+                    }
+                }
+                error!("Memory address not mapped: {:04x}", address);     
+                return 0;           
+            }
+        }
     }
 
     pub fn cpu_write_u8(&mut self, address: usize, val: u8) {
-        for r in &mut self.prg_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.write_u8(address - r.start, val);
+        match address {
+            0x2000..=0x3fff => {
+                // PPU Registers
+                self.ppu.write_reg((address & 0b111) as u8, val);
+            }
+            0x4000..=0x401f => {
+                // IO Registers
+                if address == 0x4014 {
+                    self.ppu.write_oamdma(val);
+                }
+            }
+            _ => {
+                for r in &mut self.prg_regions {
+                    if address >= r.start && address < r.start + r.size {
+                        return r.region.write_u8(address - r.start, val);
+                    }
+                }
+                error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
             }
         }
-        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
-    }
-
-    pub fn ppu_read_u8(&self, address: usize) -> u8 {
-        for r in &self.chr_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.read_u8(address - r.start);
-            }
-        }
-        error!("PPU Memory address not mapped: {:04x}", address);
-        0
-    }
-
-    pub fn ppu_write_u8(&mut self, address: usize, val: u8) {
-        for r in &mut self.chr_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.write_u8(address - r.start, val);
-            }
-        }
-        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
     }
 
     #[cfg(test)]
@@ -170,8 +185,8 @@ impl<'a> MemoryMap {
         MemoryMap {
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
-            cpu: Cpu6502::new(),
-            ppu: Ppu2c02::new(),
+            // cpu: Cpu6502::new(),
+            ppu: Ppu2c02::new(Vec::new()),
         }
     }
 }
