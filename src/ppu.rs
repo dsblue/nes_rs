@@ -307,10 +307,11 @@ impl Ppu2c02 {
     pub fn read_reg(&mut self, offset: u8) -> u8 {
         match offset {
             0x02 => {
+                let ppustatus = self.reg_ppustatus;
                 self.got_ppuscroll = false; // reset address latch
                 self.got_ppuaddr = false; // reset address latch
-                self.reg_ppustatus &= !PPUCTRL_V; // Clear V
-                self.reg_ppustatus
+                self.reg_ppustatus &= !PPUSTATUS_VBLANK; // Clear VBLANK
+                ppustatus
             }
             0x04 => self.reg_oamdata,
             0x07 => {
