@@ -101,9 +101,7 @@ impl std::fmt::Debug for Nametable {
 
 impl std::default::Default for Nametable {
     fn default() -> Self {
-        Nametable {
-            data: [0u8; 0x400],
-        }
+        Nametable { data: [0u8; 0x400] }
     }
 }
 
@@ -142,8 +140,7 @@ pub struct Ppu2c02 {
 
     frame_buffer: Arc<Mutex<FrameBuffer>>,
     ntsc: Vec<RGBA8>,
-
-//    pub nmi: bool,
+    //    pub nmi: bool,
 }
 
 impl std::fmt::Debug for Ppu2c02 {
@@ -182,7 +179,7 @@ impl std::default::Default for Ppu2c02 {
             oam: [0u8; 256],
             frame_buffer: Arc::default(),
             ntsc: Vec::with_capacity(64),
-//            nmi: false,
+            //            nmi: false,
         }
     }
 }
@@ -238,7 +235,8 @@ impl Ppu2c02 {
     }
 
     pub fn write_reg(&mut self, offset: u8, val: u8) {
-        match offset {            
+        info!("write_reg PPU: {:02x} = {:02x}", offset, val);
+        match offset {
             0x00 => self.reg_ppuctrl = val,
             0x01 => self.reg_ppumask = val,
             0x02 => (),
@@ -283,6 +281,7 @@ impl Ppu2c02 {
     }
 
     pub fn write_oamdma(&mut self, val: u8) {
+        info!("write_oamdma PPU: OAMDMA = {:02x}", val);
         self.reg_oamdma = val;
     }
 
@@ -298,18 +297,21 @@ impl Ppu2c02 {
             0x07 => self.reg_ppudata,
             _ => {
                 error!(
-                    "Attempt to read from an invalid PPU register {:02x}", offset);
+                    "Attempt to read from an invalid PPU register {:02x}",
+                    offset
+                );
                 0xff
             }
         }
     }
 
     pub fn read_reg(&mut self, offset: u8) -> u8 {
+        //info!("read_reg PPU: {:02x}", offset);
         match offset {
             0x02 => {
                 self.got_ppuscroll = false; // reset address latch
                 self.got_ppuaddr = false; // reset address latch
-                self.reg_ppustatus &= !PPUCTRL_V; // Clear V
+                self.reg_ppustatus &= !PPUSTATUS_VBLANK; // Clear VBLANK
                 self.reg_ppustatus
             }
             0x04 => self.reg_oamdata,
@@ -324,7 +326,9 @@ impl Ppu2c02 {
             }
             _ => {
                 error!(
-                    "Attempt to read from an invalid PPU register {:02x}", offset);
+                    "Attempt to read from an invalid PPU register {:02x}",
+                    offset
+                );
                 0xff
             }
         }
@@ -388,7 +392,7 @@ impl Ppu2c02 {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
-//                        self.nmi = true;
+                        //self.nmi = true;
                         info!("NMI...");
 
                         e.push_back(Event::Nmi);
