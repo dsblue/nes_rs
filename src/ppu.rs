@@ -309,10 +309,11 @@ impl Ppu2c02 {
         //info!("read_reg PPU: {:02x}", offset);
         match offset {
             0x02 => {
+                let ppustatus = self.reg_ppustatus;
                 self.got_ppuscroll = false; // reset address latch
                 self.got_ppuaddr = false; // reset address latch
                 self.reg_ppustatus &= !PPUSTATUS_VBLANK; // Clear VBLANK
-                self.reg_ppustatus
+                ppustatus
             }
             0x04 => self.reg_oamdata,
             0x07 => {
