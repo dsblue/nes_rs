@@ -125,9 +125,7 @@ fn run(rom: Rom) -> Result<(), Error> {
                                 info!("NMI-");
                                 cpu.nmi();
                             }
-                            ppu::Event::VBlank => {
-                                ()
-                            }
+                            ppu::Event::VBlank => (),
                         }
                     }
 

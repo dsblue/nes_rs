@@ -1,8 +1,8 @@
+use crate::ppu::Event;
 use crate::ppu::Ppu2c02;
 use crate::Rom;
-use std::fmt;
 use std::collections::VecDeque;
-use crate::ppu::Event;
+use std::fmt;
 
 pub trait MemoryMapInterface {
     fn read_u8(&self, address: usize) -> u8;
@@ -29,7 +29,7 @@ impl MemoryMapInterface for RegionType {
 
     fn write_u8(&mut self, _offset: usize, _val: u8) {
         match self {
-            RegionType::Rom { data: _ } => {} 
+            RegionType::Rom { data: _ } => {}
         }
     }
 }
@@ -50,6 +50,8 @@ pub struct MemoryMap {
     pub ppu: Ppu2c02,
     prg_regions: Vec<Region>,
     chr_regions: Vec<Region>,
+
+    cpu_ram: [u8; 2 * 0x400],
 }
 
 impl<'a> fmt::Debug for MemoryMap {
@@ -62,6 +64,9 @@ impl<'a> MemoryMap {
     pub fn new(rom: &Rom, ppu: Ppu2c02) -> MemoryMap {
         let mut mm = MemoryMap {
             ppu: ppu,
+
+            cpu_ram: [0u8; 2 * 1024],
+
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
         };
@@ -122,27 +127,23 @@ impl<'a> MemoryMap {
         self.ppu.tick(e);
     }
 
-    pub fn cpu_peek_u8(&mut self, address: usize) -> u8 {
+    pub fn cpu_read_u8(&mut self, address: usize, peek: bool) -> u8 {
         match address {
+            0x0000..=0x1fff => {
+                // 2KB internal RAM mirrored x 4
+                self.cpu_ram[0x07ff & address]
+            }
             0x2000..=0x3fff => {
                 // PPU Registers
-                self.ppu.peek_reg((address & 0b111) as u8) 
-            }
-            _ => {
-                error!("Memory address not peek-able: {:04x}", address);     
-                0
-            }
-        }
-    }
-
-    pub fn cpu_read_u8(&mut self, address: usize) -> u8 {
-        match address {
-            0x2000..=0x3fff => {
-                // PPU Registers
-                self.ppu.read_reg((address & 0b111) as u8) 
+                if peek {
+                    self.ppu.peek_reg((address & 0b111) as u8)
+                } else {
+                    self.ppu.read_reg((address & 0b111) as u8)
+                }
             }
             0x4000..=0x401f => {
-                // IO Registers
+                // NES APU and IO registers
+                warn!("APU Not implemented: Read APU:0x{:04x}", (address - 0x4000));
                 0xff
             }
             _ => {
@@ -151,22 +152,34 @@ impl<'a> MemoryMap {
                         return r.region.read_u8(address - r.start);
                     }
                 }
-                error!("Memory address not mapped: {:04x}", address);     
-                return 0;           
+                error!("Memory address not mapped: {:04x}", address);
+                return 0;
             }
         }
     }
 
     pub fn cpu_write_u8(&mut self, address: usize, val: u8) {
         match address {
+            0x0000..=0x1fff => {
+                // 2KB internal RAM mirrored x 4
+                self.cpu_ram[0x07ff & address] = val;
+            }
             0x2000..=0x3fff => {
                 // PPU Registers
                 self.ppu.write_reg((address & 0b111) as u8, val);
             }
             0x4000..=0x401f => {
                 // IO Registers
-                if address == 0x4014 {
-                    self.ppu.write_oamdma(val);
+                match address {
+                    0x4014 => self.ppu.write_oamdma(val),
+                    _ => {
+                        // NES APU and IO registers
+                        warn!(
+                            "APU Not implemented: Write APU:0x{:04x}: 0x{:02x}",
+                            (address - 0x4000),
+                            val
+                        )
+                    }
                 }
             }
             _ => {
@@ -181,10 +194,23 @@ impl<'a> MemoryMap {
     }
 
     #[cfg(test)]
+    pub fn _set_internal_ram(&mut self, m: Vec<(usize, u8)>) {
+        for (addr, val) in m {
+            self.cpu_ram[addr] = val;
+        }
+    }
+
+    #[cfg(test)]
+    pub fn _write_internal_ram(&mut self, addr: usize, mem: &[u8]) {
+        self.cpu_ram[addr..addr + mem.len()].clone_from_slice(mem);
+    }
+
+    #[cfg(test)]
     pub fn new_stub() -> Self {
         MemoryMap {
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
+            cpu_ram: [0u8; 2 * 1024],
             // cpu: Cpu6502::new(),
             ppu: Ppu2c02::new(Vec::new()),
         }
