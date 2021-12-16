@@ -105,7 +105,6 @@ fn run(rom: Rom) -> Result<(), Error> {
             events.push_front(ppu::Event::Reset);
 
             cpu.power_on_reset(&mut mm);
-            //ppu.power_on_reset();
 
             loop {
                 for _ in 0..10_000 {
@@ -119,7 +118,6 @@ fn run(rom: Rom) -> Result<(), Error> {
                         match e {
                             ppu::Event::Reset => {
                                 cpu.reset(&mut mm);
-                                //ppu.reset();
                             }
                             ppu::Event::Nmi => {
                                 info!("NMI-");
@@ -140,8 +138,6 @@ fn run(rom: Rom) -> Result<(), Error> {
     }
 
     event_loop.run(move |event, _, control_flow| {
-        //println!("{:?}", event);
-
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

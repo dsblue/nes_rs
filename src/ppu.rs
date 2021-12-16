@@ -40,19 +40,6 @@ pub enum Event {
     Nmi,
 }
 
-// #[derive(Debug, Copy, Clone)]
-// pub enum PpuRegisters {
-//     PpuCtrl,   // write
-//     PpuStatus, // read
-//     PpuMask,   // write
-//     PpuScroll, // write x2
-//     PpuAddr,   // write x2
-//     PpuData,   // read/write
-//     OamAddr,   // write
-//     OamData,   // read/write
-//     OamDma,    // write
-// }
-
 #[derive(Debug)]
 enum PpuState {
     WarmUp,
@@ -140,7 +127,6 @@ pub struct Ppu2c02 {
 
     frame_buffer: Arc<Mutex<FrameBuffer>>,
     ntsc: Vec<RGBA8>,
-    //    pub nmi: bool,
 }
 
 impl std::fmt::Debug for Ppu2c02 {
@@ -393,7 +379,6 @@ impl Ppu2c02 {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
-                        //self.nmi = true;
                         info!("NMI...");
 
                         e.push_back(Event::Nmi);

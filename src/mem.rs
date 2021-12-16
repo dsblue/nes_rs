@@ -211,7 +211,6 @@ impl<'a> MemoryMap {
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
             cpu_ram: [0u8; 2 * 1024],
-            // cpu: Cpu6502::new(),
             ppu: Ppu2c02::new(Vec::new()),
         }
     }
