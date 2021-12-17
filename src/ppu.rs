@@ -292,7 +292,6 @@ impl Ppu2c02 {
     }
 
     pub fn read_reg(&mut self, offset: u8) -> u8 {
-        //info!("read_reg PPU: {:02x}", offset);
         match offset {
             0x02 => {
                 let ppustatus = self.reg_ppustatus;
