@@ -250,320 +250,7 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn info(&self, o: (u8, u16, u16)) -> (&str, String, u8) {
-        use AddressMode::*;
-        use Instruction::*;
-
-        match *self {
-            Adc(m) => ("adc", m.display(o), m.size()),
-            And(m) => ("and", m.display(o), m.size()),
-            Asl(m) => ("asl", m.display(o), m.size()),
-            Bcc => ("bcc", Rel.display(o), 2),
-            Bcs => ("bcs", Rel.display(o), 2),
-            Beq => ("beq", Rel.display(o), 2),
-            Bit(m) => ("bit", m.display(o), m.size()),
-            Bmi => ("bmi", Rel.display(o), 2),
-            Bne => ("bne", Rel.display(o), 2),
-            Bpl => ("bpl", Rel.display(o), 2),
-            Brk => ("brk", "".to_string(), 1),
-            Bvc => ("bvc", Rel.display(o), 2),
-            Bvs => ("bvs", Rel.display(o), 2),
-            Clc => ("clc", "".to_string(), 1),
-            Cld => ("cld", "".to_string(), 1),
-            Cli => ("cli", "".to_string(), 1),
-            Clv => ("clv", "".to_string(), 1),
-            Cmp(m) => ("cmp", m.display(o), m.size()),
-            Cpx(m) => ("cpx", m.display(o), m.size()),
-            Cpy(m) => ("cpy", m.display(o), m.size()),
-            Dec(m) => ("dec", m.display(o), m.size()),
-            Dex => ("dex", "".to_string(), 1),
-            Dey => ("dey", "".to_string(), 1),
-            Eor(m) => ("eor", m.display(o), m.size()),
-            Inc(m) => ("inc", m.display(o), m.size()),
-            Inx => ("inx", "".to_string(), 1),
-            Iny => ("iny", "".to_string(), 1),
-            Jmp(m) => ("jmp", m.display(o), m.size()),
-            Jsr(m) => ("jsr", m.display(o), m.size()),
-            Lda(m) => ("lda", m.display(o), m.size()),
-            Ldx(m) => ("ldx", m.display(o), m.size()),
-            Ldy(m) => ("ldy", m.display(o), m.size()),
-            Lsr(m) => ("lsr", m.display(o), m.size()),
-            Nop(m) => ("nop", m.display(o), m.size()),
-            Ora(m) => ("ora", m.display(o), m.size()),
-            Pha => ("pha", "".to_string(), 1),
-            Php => ("php", "".to_string(), 1),
-            Pla => ("pla", "".to_string(), 1),
-            Plp => ("plp", "".to_string(), 1),
-            Rol(m) => ("rol", m.display(o), m.size()),
-            Ror(m) => ("ror", m.display(o), m.size()),
-            Rti => ("rti", "".to_string(), 1),
-            Rts => ("rts", "".to_string(), 1),
-            Sbc(m) => ("sbc", m.display(o), m.size()),
-            Sec => ("sec", "".to_string(), 1),
-            Sed => ("sed", "".to_string(), 1),
-            Sei => ("sei", "".to_string(), 1),
-            Sta(m) => ("sta", m.display(o), m.size()),
-            Stx(m) => ("stx", m.display(o), m.size()),
-            Sty(m) => ("sty", m.display(o), m.size()),
-            Tax => ("tax", "".to_string(), 1),
-            Tay => ("tay", "".to_string(), 1),
-            Tsx => ("tsx", "".to_string(), 1),
-            Txa => ("txa", "".to_string(), 1),
-            Txs => ("txs", "".to_string(), 1),
-            Tya => ("tya", "".to_string(), 1),
-
-            Ahx(m) => ("ahx", m.display(o), m.size()),
-            Alr => ("alr", "".to_string(), 1),
-            Anc => ("anc", "".to_string(), 1),
-            Arr => ("arr", "".to_string(), 1),
-            Axs => ("axs", "".to_string(), 1),
-            Dcp(m) => ("*dcp", m.display(o), m.size()),
-            Isb(m) => ("*isb", m.display(o), m.size()),
-            Kil(m) => ("kil", m.display(o), m.size()),
-            Las => ("las", "".to_string(), 1),
-            Lax(m) => ("*lax", m.display(o), m.size()),
-            Rla(m) => ("rla", m.display(o), m.size()),
-            Rra(m) => ("rra", m.display(o), m.size()),
-            Sax(m) => ("*sax", m.display(o), m.size()),
-            Shx(m) => ("shx", m.display(o), m.size()),
-            Shy(m) => ("shy", m.display(o), m.size()),
-            Slo(m) => ("*slo", m.display(o), m.size()),
-            Sre(m) => ("*sre", m.display(o), m.size()),
-            Tas => ("tas", "".to_string(), 1),
-            Xaa => ("xaa", "".to_string(), 1),
-
-            Nmi => ("nmi", "".to_string(), 1),
-            Irq => ("irq", "".to_string(), 1),
-        }
-    }
-}
-
-pub struct Cpu6502 {
-    reg_a: u8,   // Accumulator
-    reg_x: u8,   // Index X
-    reg_y: u8,   // Index Y
-    reg_pc: u16, // Program counter
-    reg_s: u8,   // Stack pointer
-    reg_p: u8,   // Status
-
-    inst_count: u64,
-    cycle_count: u64,
-
-    inst: Instruction,
-
-    nmi_pending: bool,
-    irq_level: bool,
-
-    addr: u16,
-    addr_prev: u16,
-    ptr: u8,
-    value: u8,
-    cycle: u8,
-
-    trace_on: bool,
-    prev_state: (u16, Instruction, u8, u8, u8, u8, u8),
-    debugu8: u8,
-    debugu16: u16,
-}
-
-impl Cpu6502 {
-    pub fn new() -> Cpu6502 {
-        Cpu6502 {
-            reg_a: 0,
-            reg_x: 0,
-            reg_y: 0,
-            reg_pc: 0,
-            reg_p: 0,
-            reg_s: 0,
-
-            inst_count: 0,
-            cycle_count: 0,
-
-            inst: Instruction::Brk,
-
-            nmi_pending: false,
-            irq_level: true,
-
-            addr: 0,
-            addr_prev: 0,
-            ptr: 0,
-            value: 0,
-            cycle: 1,
-
-            trace_on: false,
-            prev_state: (0, Instruction::Brk, 0, 0, 0, 0, 0),
-            debugu8: 0,
-            debugu16: 0,
-        }
-    }
-
-    pub fn reset(&mut self, mm: &mut MemoryMap) {
-        info!("Reset CPU");
-
-        self.reg_p |= I;
-
-        self.reg_s = self.reg_s.wrapping_sub(3);
-
-        // Load the reset vector
-        self.reg_pc =
-            (peek_u8!(mm, RESET_VECTOR + 1) as u16) << 8 | peek_u8!(mm, RESET_VECTOR) as u16;
-    }
-
-    pub fn power_on_reset(&mut self, mm: &mut MemoryMap) {
-        info!("Power Cycle CPU");
-
-        self.reg_a = 0;
-        self.reg_x = 0;
-        self.reg_y = 0;
-        self.reg_p = 0x34;
-
-        // To match nestest, OK?
-        self.reg_p = 0b0010_0100;
-
-        self.reg_s = 0xfd;
-
-        // Load the reset vector
-        self.reg_pc =
-            (peek_u8!(mm, RESET_VECTOR + 1) as u16) << 8 | peek_u8!(mm, RESET_VECTOR) as u16;
-    }
-
-    pub fn _irq(&mut self, level: bool) {
-        self.irq_level = level;
-    }
-
-    pub fn nmi(&mut self) {
-        self.nmi_pending = true;
-    }
-
-    pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
-        use Instruction::*;
-
-        match self.cycle {
-            0 => {
-                panic!("Cycle 0 is reserved");
-            }
-            1 => {
-                if self.trace_on && self.inst_count != 0 {
-                    let c = self.disassemble_nestest(mm);
-                    println!("{:>8}:  {}", self.inst_count, c);
-                }
-
-                // Check for interrupts
-                if self.nmi_pending {
-                    info!("NMI");
-                    self.nmi_pending = false;
-                    self.inst = Instruction::Nmi;
-                } else if !self.irq_level && (self.reg_p & I == 0) {
-                    info!("IRQ");
-                    self.inst = Instruction::Irq;
-                } else {
-                    // Fetch decode
-                    let op = read_u8!(mm, self.reg_pc as usize);
-                    self.inst = Cpu6502::decode_op(op);
-                }
-
-                self.prev_state = (
-                    self.reg_pc,
-                    self.inst,
-                    self.reg_a,
-                    self.reg_x,
-                    self.reg_y,
-                    self.reg_p,
-                    self.reg_s,
-                );
-                self.reg_pc = self.reg_pc.wrapping_add(1);
-                self.cycle += 1;
-                self.inst_count += 1;
-            }
-            _ => match self.inst {
-                Adc(m) => self.ex_adc(mm, m),
-                And(m) => self.ex_and(mm, m),
-                Asl(m) => self.ex_asl(mm, m),
-                Bcc => self.ex_bcc(mm),
-                Bcs => self.ex_bcs(mm),
-                Beq => self.ex_beq(mm),
-                Bit(m) => self.ex_bit(mm, m),
-                Bmi => self.ex_bmi(mm),
-                Bne => self.ex_bne(mm),
-                Bpl => self.ex_bpl(mm),
-                Brk => self.ex_brk(mm),
-                Bvc => self.ex_bvc(mm),
-                Bvs => self.ex_bvs(mm),
-                Clc => self.ex_clc(),
-                Cld => self.ex_cld(),
-                Cli => self.ex_cli(),
-                Clv => self.ex_clv(),
-                Cmp(m) => self.ex_cmp(mm, m),
-                Cpx(m) => self.ex_cpx(mm, m),
-                Cpy(m) => self.ex_cpy(mm, m),
-                Dec(m) => self.ex_dec(mm, m),
-                Dex => self.ex_dex(),
-                Dey => self.ex_dey(),
-                Eor(m) => self.ex_eor(mm, m),
-                Inc(m) => self.ex_inc(mm, m),
-                Inx => self.ex_inx(),
-                Iny => self.ex_iny(),
-                Jmp(m) => self.ex_jmp(mm, m),
-                Jsr(_) => self.ex_jsr(mm),
-                Lda(m) => self.ex_lda(mm, m),
-                Ldx(m) => self.ex_ldx(mm, m),
-                Ldy(m) => self.ex_ldy(mm, m),
-                Lsr(m) => self.ex_lsr(mm, m),
-                Nop(m) => self.ex_nop(mm, m),
-                Ora(m) => self.ex_ora(mm, m),
-                Pha => self.ex_pha(mm),
-                Php => self.ex_php(mm),
-                Pla => self.ex_pla(mm),
-                Plp => self.ex_plp(mm),
-                Rol(m) => self.ex_rol(mm, m),
-                Ror(m) => self.ex_ror(mm, m),
-                Rti => self.ex_rti(mm),
-                Rts => self.ex_rts(mm),
-                Sbc(m) => self.ex_sbc(mm, m),
-                Sec => self.ex_sec(),
-                Sed => self.ex_sed(),
-                Sei => self.ex_sei(),
-                Sta(m) => self.ex_sta(mm, m),
-                Stx(m) => self.ex_stx(mm, m),
-                Sty(m) => self.ex_sty(mm, m),
-                Tax => self.ex_tax(),
-                Tay => self.ex_tay(),
-                Tsx => self.ex_tsx(),
-                Txa => self.ex_txa(),
-                Txs => self.ex_txs(),
-                Tya => self.ex_tya(),
-
-                // Unusual Instructions
-                Ahx(m) => self.ex_ahx(mm, m),
-                Alr => panic!("Unimplemented Opcode {:?}", self.inst),
-                Anc => panic!("Unimplemented Opcode {:?}", self.inst),
-                Arr => panic!("Unimplemented Opcode {:?}", self.inst),
-                Axs => panic!("Unimplemented Opcode {:?}", self.inst),
-                Dcp(m) => self.ex_dcp(mm, m),
-                Isb(m) => self.ex_isb(mm, m),
-                Kil(_) => panic!("Unimplemented Opcode {:?}", self.inst),
-                Las => panic!("Unimplemented Opcode {:?}", self.inst),
-                Lax(m) => self.ex_lax(mm, m),
-                Rla(m) => self.ex_rla(mm, m),
-                Rra(m) => self.ex_rra(mm, m),
-                Sax(m) => self.ex_sax(mm, m),
-                Shx(m) => self.ex_shx(mm, m),
-                Shy(m) => self.ex_shy(mm, m),
-                Slo(m) => self.ex_slo(mm, m),
-                Sre(m) => self.ex_sre(mm, m),
-                Tas => panic!("Unimplemented Opcode {:?}", self.inst),
-                Xaa => panic!("Unimplemented Opcode {:?}", self.inst),
-
-                // Meta Instructions
-                Nmi => self.ex_nmi(mm),
-                Irq => self.ex_irq(mm),
-            },
-        }
-
-        self.cycle_count += 1;
-    }
-
-    fn decode_op(op: u8) -> Instruction {
+    fn from_op(op: u8) -> Instruction {
         use AddressMode::*;
         use Instruction::*;
 
@@ -827,15 +514,328 @@ impl Cpu6502 {
         }
     }
 
+    fn info(&self, o: (u8, u16, u16)) -> (&str, String, u8) {
+        use AddressMode::*;
+        use Instruction::*;
+
+        match *self {
+            Adc(m) => ("adc", m.display(o), m.size()),
+            And(m) => ("and", m.display(o), m.size()),
+            Asl(m) => ("asl", m.display(o), m.size()),
+            Bcc => ("bcc", Rel.display(o), 2),
+            Bcs => ("bcs", Rel.display(o), 2),
+            Beq => ("beq", Rel.display(o), 2),
+            Bit(m) => ("bit", m.display(o), m.size()),
+            Bmi => ("bmi", Rel.display(o), 2),
+            Bne => ("bne", Rel.display(o), 2),
+            Bpl => ("bpl", Rel.display(o), 2),
+            Brk => ("brk", "".to_string(), 1),
+            Bvc => ("bvc", Rel.display(o), 2),
+            Bvs => ("bvs", Rel.display(o), 2),
+            Clc => ("clc", "".to_string(), 1),
+            Cld => ("cld", "".to_string(), 1),
+            Cli => ("cli", "".to_string(), 1),
+            Clv => ("clv", "".to_string(), 1),
+            Cmp(m) => ("cmp", m.display(o), m.size()),
+            Cpx(m) => ("cpx", m.display(o), m.size()),
+            Cpy(m) => ("cpy", m.display(o), m.size()),
+            Dec(m) => ("dec", m.display(o), m.size()),
+            Dex => ("dex", "".to_string(), 1),
+            Dey => ("dey", "".to_string(), 1),
+            Eor(m) => ("eor", m.display(o), m.size()),
+            Inc(m) => ("inc", m.display(o), m.size()),
+            Inx => ("inx", "".to_string(), 1),
+            Iny => ("iny", "".to_string(), 1),
+            Jmp(m) => ("jmp", m.display(o), m.size()),
+            Jsr(m) => ("jsr", m.display(o), m.size()),
+            Lda(m) => ("lda", m.display(o), m.size()),
+            Ldx(m) => ("ldx", m.display(o), m.size()),
+            Ldy(m) => ("ldy", m.display(o), m.size()),
+            Lsr(m) => ("lsr", m.display(o), m.size()),
+            Nop(m) => ("nop", m.display(o), m.size()),
+            Ora(m) => ("ora", m.display(o), m.size()),
+            Pha => ("pha", "".to_string(), 1),
+            Php => ("php", "".to_string(), 1),
+            Pla => ("pla", "".to_string(), 1),
+            Plp => ("plp", "".to_string(), 1),
+            Rol(m) => ("rol", m.display(o), m.size()),
+            Ror(m) => ("ror", m.display(o), m.size()),
+            Rti => ("rti", "".to_string(), 1),
+            Rts => ("rts", "".to_string(), 1),
+            Sbc(m) => ("sbc", m.display(o), m.size()),
+            Sec => ("sec", "".to_string(), 1),
+            Sed => ("sed", "".to_string(), 1),
+            Sei => ("sei", "".to_string(), 1),
+            Sta(m) => ("sta", m.display(o), m.size()),
+            Stx(m) => ("stx", m.display(o), m.size()),
+            Sty(m) => ("sty", m.display(o), m.size()),
+            Tax => ("tax", "".to_string(), 1),
+            Tay => ("tay", "".to_string(), 1),
+            Tsx => ("tsx", "".to_string(), 1),
+            Txa => ("txa", "".to_string(), 1),
+            Txs => ("txs", "".to_string(), 1),
+            Tya => ("tya", "".to_string(), 1),
+
+            Ahx(m) => ("ahx", m.display(o), m.size()),
+            Alr => ("alr", "".to_string(), 1),
+            Anc => ("anc", "".to_string(), 1),
+            Arr => ("arr", "".to_string(), 1),
+            Axs => ("axs", "".to_string(), 1),
+            Dcp(m) => ("*dcp", m.display(o), m.size()),
+            Isb(m) => ("*isb", m.display(o), m.size()),
+            Kil(m) => ("kil", m.display(o), m.size()),
+            Las => ("las", "".to_string(), 1),
+            Lax(m) => ("*lax", m.display(o), m.size()),
+            Rla(m) => ("rla", m.display(o), m.size()),
+            Rra(m) => ("rra", m.display(o), m.size()),
+            Sax(m) => ("*sax", m.display(o), m.size()),
+            Shx(m) => ("shx", m.display(o), m.size()),
+            Shy(m) => ("shy", m.display(o), m.size()),
+            Slo(m) => ("*slo", m.display(o), m.size()),
+            Sre(m) => ("*sre", m.display(o), m.size()),
+            Tas => ("tas", "".to_string(), 1),
+            Xaa => ("xaa", "".to_string(), 1),
+
+            Nmi => ("nmi", "".to_string(), 1),
+            Irq => ("irq", "".to_string(), 1),
+        }
+    }
+}
+
+pub struct Cpu6502 {
+    reg_a: u8,   // Accumulator
+    reg_x: u8,   // Index X
+    reg_y: u8,   // Index Y
+    reg_pc: u16, // Program counter
+    reg_s: u8,   // Stack pointer
+    reg_p: u8,   // Status
+
+    inst_count: u64,
+    cycle_count: u64,
+
+    inst: Instruction,
+
+    nmi_pending: bool,
+    irq_level: bool,
+
+    addr: u16,
+    addr_prev: u16,
+    ptr: u8,
+    value: u8,
+    cycle: u8,
+
+    trace_on: bool,
+    prev_state: (u16, Instruction, u8, u8, u8, u8, u8),
+    debugu8: u8,
+    debugu16: u16,
+}
+
+impl Cpu6502 {
+    pub fn new() -> Cpu6502 {
+        Cpu6502 {
+            reg_a: 0,
+            reg_x: 0,
+            reg_y: 0,
+            reg_pc: 0,
+            reg_p: 0,
+            reg_s: 0,
+
+            inst_count: 0,
+            cycle_count: 0,
+
+            inst: Instruction::Brk,
+
+            nmi_pending: false,
+            irq_level: true,
+
+            addr: 0,
+            addr_prev: 0,
+            ptr: 0,
+            value: 0,
+            cycle: 1,
+
+            trace_on: false,
+            prev_state: (0, Instruction::Brk, 0, 0, 0, 0, 0),
+            debugu8: 0,
+            debugu16: 0,
+        }
+    }
+
+    pub fn reset(&mut self, mm: &mut MemoryMap) {
+        info!("Reset CPU");
+
+        self.reg_p |= I;
+
+        self.reg_s = self.reg_s.wrapping_sub(3);
+
+        // Load the reset vector
+        self.reg_pc =
+            (peek_u8!(mm, RESET_VECTOR + 1) as u16) << 8 | peek_u8!(mm, RESET_VECTOR) as u16;
+    }
+
+    pub fn power_on_reset(&mut self, mm: &mut MemoryMap) {
+        info!("Power Cycle CPU");
+
+        self.reg_a = 0;
+        self.reg_x = 0;
+        self.reg_y = 0;
+        self.reg_p = 0x34;
+
+        // To match nestest, OK?
+        self.reg_p = 0b0010_0100;
+
+        self.reg_s = 0xfd;
+
+        // Load the reset vector
+        self.reg_pc =
+            (peek_u8!(mm, RESET_VECTOR + 1) as u16) << 8 | peek_u8!(mm, RESET_VECTOR) as u16;
+    }
+
+    pub fn _irq(&mut self, level: bool) {
+        self.irq_level = level;
+    }
+
+    pub fn nmi(&mut self) {
+        self.nmi_pending = true;
+    }
+
+    pub fn tick(&mut self, mm: &mut MemoryMap, _e: &mut VecDeque<Event>) {
+        use Instruction::*;
+
+        match self.cycle {
+            0 => {
+                panic!("Cycle 0 is reserved");
+            }
+            1 => {
+                if self.trace_on && self.inst_count != 0 {
+                    let c = self.disassemble_nestest(mm);
+                    println!("{:>8}:  {}", self.inst_count, c);
+                }
+
+                // Check for interrupts
+                if self.nmi_pending {
+                    info!("NMI");
+                    self.nmi_pending = false;
+                    self.inst = Instruction::Nmi;
+                } else if !self.irq_level && (self.reg_p & I == 0) {
+                    info!("IRQ");
+                    self.inst = Instruction::Irq;
+                } else {
+                    // Fetch decode
+                    let op = read_u8!(mm, self.reg_pc as usize);
+                    self.inst = Instruction::from_op(op);
+                }
+
+                self.prev_state = (
+                    self.reg_pc,
+                    self.inst,
+                    self.reg_a,
+                    self.reg_x,
+                    self.reg_y,
+                    self.reg_p,
+                    self.reg_s,
+                );
+                self.reg_pc = self.reg_pc.wrapping_add(1);
+                self.cycle += 1;
+                self.inst_count += 1;
+            }
+            _ => match self.inst {
+                Adc(m) => self.ex_adc(mm, m),
+                And(m) => self.ex_and(mm, m),
+                Asl(m) => self.ex_asl(mm, m),
+                Bcc => self.ex_bcc(mm),
+                Bcs => self.ex_bcs(mm),
+                Beq => self.ex_beq(mm),
+                Bit(m) => self.ex_bit(mm, m),
+                Bmi => self.ex_bmi(mm),
+                Bne => self.ex_bne(mm),
+                Bpl => self.ex_bpl(mm),
+                Brk => self.ex_brk(mm),
+                Bvc => self.ex_bvc(mm),
+                Bvs => self.ex_bvs(mm),
+                Clc => self.ex_clc(),
+                Cld => self.ex_cld(),
+                Cli => self.ex_cli(),
+                Clv => self.ex_clv(),
+                Cmp(m) => self.ex_cmp(mm, m),
+                Cpx(m) => self.ex_cpx(mm, m),
+                Cpy(m) => self.ex_cpy(mm, m),
+                Dec(m) => self.ex_dec(mm, m),
+                Dex => self.ex_dex(),
+                Dey => self.ex_dey(),
+                Eor(m) => self.ex_eor(mm, m),
+                Inc(m) => self.ex_inc(mm, m),
+                Inx => self.ex_inx(),
+                Iny => self.ex_iny(),
+                Jmp(m) => self.ex_jmp(mm, m),
+                Jsr(_) => self.ex_jsr(mm),
+                Lda(m) => self.ex_lda(mm, m),
+                Ldx(m) => self.ex_ldx(mm, m),
+                Ldy(m) => self.ex_ldy(mm, m),
+                Lsr(m) => self.ex_lsr(mm, m),
+                Nop(m) => self.ex_nop(mm, m),
+                Ora(m) => self.ex_ora(mm, m),
+                Pha => self.ex_pha(mm),
+                Php => self.ex_php(mm),
+                Pla => self.ex_pla(mm),
+                Plp => self.ex_plp(mm),
+                Rol(m) => self.ex_rol(mm, m),
+                Ror(m) => self.ex_ror(mm, m),
+                Rti => self.ex_rti(mm),
+                Rts => self.ex_rts(mm),
+                Sbc(m) => self.ex_sbc(mm, m),
+                Sec => self.ex_sec(),
+                Sed => self.ex_sed(),
+                Sei => self.ex_sei(),
+                Sta(m) => self.ex_sta(mm, m),
+                Stx(m) => self.ex_stx(mm, m),
+                Sty(m) => self.ex_sty(mm, m),
+                Tax => self.ex_tax(),
+                Tay => self.ex_tay(),
+                Tsx => self.ex_tsx(),
+                Txa => self.ex_txa(),
+                Txs => self.ex_txs(),
+                Tya => self.ex_tya(),
+
+                // Unusual Instructions
+                Ahx(m) => self.ex_ahx(mm, m),
+                Alr => panic!("Unimplemented Opcode {:?}", self.inst),
+                Anc => panic!("Unimplemented Opcode {:?}", self.inst),
+                Arr => panic!("Unimplemented Opcode {:?}", self.inst),
+                Axs => panic!("Unimplemented Opcode {:?}", self.inst),
+                Dcp(m) => self.ex_dcp(mm, m),
+                Isb(m) => self.ex_isb(mm, m),
+                Kil(_) => panic!("Unimplemented Opcode {:?}", self.inst),
+                Las => panic!("Unimplemented Opcode {:?}", self.inst),
+                Lax(m) => self.ex_lax(mm, m),
+                Rla(m) => self.ex_rla(mm, m),
+                Rra(m) => self.ex_rra(mm, m),
+                Sax(m) => self.ex_sax(mm, m),
+                Shx(m) => self.ex_shx(mm, m),
+                Shy(m) => self.ex_shy(mm, m),
+                Slo(m) => self.ex_slo(mm, m),
+                Sre(m) => self.ex_sre(mm, m),
+                Tas => panic!("Unimplemented Opcode {:?}", self.inst),
+                Xaa => panic!("Unimplemented Opcode {:?}", self.inst),
+
+                // Meta Instructions
+                Nmi => self.ex_nmi(mm),
+                Irq => self.ex_irq(mm),
+            },
+        }
+
+        self.cycle_count += 1;
+    }
+
     #[allow(dead_code)]
-    pub fn disassemble(mm: &mut MemoryMap, address: usize, num: usize) -> String {
+    fn disassemble(mm: &mut MemoryMap, address: usize, num: usize) -> String {
         let mut s = String::new();
         let mut address = address;
 
         for _ in 0..num {
             // Disassembly info for debug
             let op = peek_u8!(mm, address);
-            let inst = Cpu6502::decode_op(op);
+            let inst = Instruction::from_op(op);
             let context = (
                 peek_u8!(mm, address + 1),
                 peek_u8!(mm, address + 1) as u16 | (peek_u8!(mm, address + 2) as u16) << 8,
