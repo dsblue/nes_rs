@@ -3,7 +3,6 @@ extern crate log;
 extern crate clap;
 use clap::App;
 use pixels::{Error, Pixels, SurfaceTexture};
-//use read_input::prelude::*;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::thread;
@@ -96,38 +95,35 @@ fn run(rom: Rom) -> Result<(), Error> {
         let frame = Arc::clone(&frame);
 
         thread::spawn(move || {
-            let mut mm = MemoryMap::new(&rom);
             let mut cpu = Cpu6502::new();
-            let mut ppu = Ppu2c02::new();
-
+            let mut ppu = Ppu2c02::new(rom.chr_rom.to_owned());
             ppu.set_framebuffer(frame);
 
+            let mut mm = MemoryMap::new(&rom, ppu);
+
             let mut events: VecDeque<ppu::Event> = VecDeque::new();
-            //events.push_front(ppu::Event::Reset);
+            events.push_front(ppu::Event::Reset);
 
             cpu.power_on_reset(&mut mm);
-            ppu.power_on_reset();
 
             loop {
                 for _ in 0..10_000 {
                     cpu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-                    ppu.tick(&mut mm, &mut events);
-
-                    if mm.ppu.nmi {
-                        mm.ppu.nmi = false;
-                        cpu.nmi();
-                    }
+                    mm.tick_ppu(&mut events);
+                    mm.tick_ppu(&mut events);
+                    mm.tick_ppu(&mut events);
 
                     // Handle any generated events
                     while let Some(e) = events.pop_back() {
                         match e {
-                            ppu::Event::_Reset => {
+                            ppu::Event::Reset => {
                                 cpu.reset(&mut mm);
-                                ppu.reset();
                             }
-                            _ => {}
+                            ppu::Event::Nmi => {
+                                info!("NMI-");
+                                cpu.nmi();
+                            }
+                            ppu::Event::VBlank => (),
                         }
                     }
 
@@ -142,8 +138,6 @@ fn run(rom: Rom) -> Result<(), Error> {
     }
 
     event_loop.run(move |event, _, control_flow| {
-        //println!("{:?}", event);
-
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

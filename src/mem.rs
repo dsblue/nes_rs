@@ -1,14 +1,12 @@
-use crate::ppu::Ppu2c02Interface;
-//use crate::Event;
+use crate::ppu::Event;
+use crate::ppu::Ppu2c02;
 use crate::Rom;
-//use std::collections::VecDeque;
+use std::collections::VecDeque;
 use std::fmt;
 
 pub trait MemoryMapInterface {
     fn read_u8(&self, address: usize) -> u8;
-    fn read_u16(&self, offset: usize) -> u16;
     fn write_u8(&mut self, address: usize, value: u8);
-    fn write_u16(&mut self, offset: usize, val: u16);
 }
 
 impl fmt::Debug for dyn MemoryMapInterface {
@@ -26,31 +24,12 @@ impl MemoryMapInterface for RegionType {
     fn read_u8(&self, offset: usize) -> u8 {
         match self {
             RegionType::Rom { data } => data[offset],
-            //RegionType::Ram { data } => data[offset],
-        }
-    }
-
-    fn read_u16(&self, offset: usize) -> u16 {
-        match self {
-            RegionType::Rom { data } => (data[offset] as u16 | (data[offset + 1] as u16) << 8),
-            //RegionType::Ram { data } => (data[offset] as u16 | (data[offset + 1] as u16) << 8),
         }
     }
 
     fn write_u8(&mut self, _offset: usize, _val: u8) {
         match self {
-            RegionType::Rom { data: _ } => {} //RegionType::Ram { data } => {
-                                              //   data[offset] = val;
-                                              //}
-        }
-    }
-
-    fn write_u16(&mut self, _offset: usize, _val: u16) {
-        match self {
-            RegionType::Rom { data: _ } => {} //RegionType::Ram { data } => {
-                                              //    data[offset] = (val >> 8) as u8;
-                                              //    data[offset + 1] = (val & 0xff) as u8;
-                                              //}
+            RegionType::Rom { data: _ } => {}
         }
     }
 }
@@ -68,9 +47,11 @@ impl<'a> fmt::Debug for Region {
 }
 
 pub struct MemoryMap {
+    pub ppu: Ppu2c02,
     prg_regions: Vec<Region>,
     chr_regions: Vec<Region>,
-    pub ppu: Ppu2c02Interface,
+
+    cpu_ram: [u8; 2 * 0x400],
 }
 
 impl<'a> fmt::Debug for MemoryMap {
@@ -80,11 +61,14 @@ impl<'a> fmt::Debug for MemoryMap {
 }
 
 impl<'a> MemoryMap {
-    pub fn new(rom: &Rom) -> MemoryMap {
+    pub fn new(rom: &Rom, ppu: Ppu2c02) -> MemoryMap {
         let mut mm = MemoryMap {
+            ppu: ppu,
+
+            cpu_ram: [0u8; 2 * 1024],
+
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
-            ppu: Ppu2c02Interface::new(),
         };
 
         // Build the rest of the memory map based on the mapper value
@@ -139,42 +123,86 @@ impl<'a> MemoryMap {
         mm
     }
 
-    pub fn cpu_read_u8(&self, address: usize) -> u8 {
-        for r in &self.prg_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.read_u8(address - r.start);
+    pub fn tick_ppu(&mut self, e: &mut VecDeque<Event>) {
+        self.ppu.tick(e);
+    }
+
+    pub fn cpu_read_u8(&mut self, address: usize, peek: bool) -> u8 {
+        match address {
+            0x0000..=0x1fff => {
+                // 2KB internal RAM mirrored x 4
+                self.cpu_ram[0x07ff & address]
+            }
+            0x2000..=0x3fff => {
+                // PPU Registers
+                if peek {
+                    self.ppu.peek_reg((address & 0b111) as u8)
+                } else {
+                    self.ppu.read_reg((address & 0b111) as u8)
+                }
+            }
+            0x4000..=0x401f => {
+                // NES APU and IO registers
+                warn!("APU Not implemented: Read APU:0x{:04x}", (address - 0x4000));
+                0xff
+            }
+            _ => {
+                for r in &self.prg_regions {
+                    if address >= r.start && address < r.start + r.size {
+                        return r.region.read_u8(address - r.start);
+                    }
+                }
+                error!("Memory address not mapped: {:04x}", address);
+                return 0;
             }
         }
-        error!("Memory address not mapped: {:04x}", address);
-        0
     }
 
     pub fn cpu_write_u8(&mut self, address: usize, val: u8) {
-        for r in &mut self.prg_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.write_u8(address - r.start, val);
+        match address {
+            0x0000..=0x1fff => {
+                // 2KB internal RAM mirrored x 4
+                self.cpu_ram[0x07ff & address] = val;
+            }
+            0x2000..=0x3fff => {
+                // PPU Registers
+                self.ppu.write_reg((address & 0b111) as u8, val);
+            }
+            0x4000..=0x401f => {
+                // IO Registers
+                match address {
+                    0x4014 => self.ppu.write_oamdma(val),
+                    _ => {
+                        // NES APU and IO registers
+                        warn!(
+                            "APU Not implemented: Write APU:0x{:04x}: 0x{:02x}",
+                            (address - 0x4000),
+                            val
+                        )
+                    }
+                }
+            }
+            _ => {
+                for r in &mut self.prg_regions {
+                    if address >= r.start && address < r.start + r.size {
+                        return r.region.write_u8(address - r.start, val);
+                    }
+                }
+                error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
             }
         }
-        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
     }
 
-    pub fn ppu_read_u8(&self, address: usize) -> u8 {
-        for r in &self.chr_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.read_u8(address - r.start);
-            }
+    #[cfg(test)]
+    pub fn _set_internal_ram(&mut self, m: Vec<(usize, u8)>) {
+        for (addr, val) in m {
+            self.cpu_ram[addr] = val;
         }
-        error!("PPU Memory address not mapped: {:04x}", address);
-        0
     }
 
-    pub fn ppu_write_u8(&mut self, address: usize, val: u8) {
-        for r in &mut self.chr_regions {
-            if address >= r.start && address < r.start + r.size {
-                return r.region.write_u8(address - r.start, val);
-            }
-        }
-        error!("Memory address not mapped: 0x{:04x}: {:02x}", address, val);
+    #[cfg(test)]
+    pub fn _write_internal_ram(&mut self, addr: usize, mem: &[u8]) {
+        self.cpu_ram[addr..addr + mem.len()].clone_from_slice(mem);
     }
 
     #[cfg(test)]
@@ -182,7 +210,8 @@ impl<'a> MemoryMap {
         MemoryMap {
             prg_regions: Vec::new(),
             chr_regions: Vec::new(),
-            ppu: Ppu2c02Interface::new(),
+            cpu_ram: [0u8; 2 * 1024],
+            ppu: Ppu2c02::new(Vec::new()),
         }
     }
 }
