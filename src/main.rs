@@ -1,7 +1,8 @@
 #[macro_use]
 extern crate log;
 extern crate clap;
-use clap::App;
+use clap::arg;
+use clap::Command;
 use pixels::{Error, Pixels, SurfaceTexture};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -34,15 +35,15 @@ const HEIGHT: u32 = 240;
 fn main() {
     env_logger::init();
 
-    let matches = App::new("NES Rust")
+    let matches = Command::new("NES Rust")
         .version("0.1")
         .about("A simple NES emulator written in Rust")
         .author("Nathan Palmer")
-        .args_from_usage(
-            "-p,--palette=[FILE]    'Load a custom palette file'
-                          -d                     'Enable debug console'
-                          <ROM>                  'ROM file to load'",
-        )
+        .args(&[
+            arg!(-p --palette [FILE] "Load a custom palette file"),
+            arg!(-d --debug "Enable debug console"),
+            arg!(<ROM> "ROM file to load"),
+        ])
         .get_matches();
 
     // Load the contents of the ROM
