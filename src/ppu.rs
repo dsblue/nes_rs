@@ -53,7 +53,7 @@ impl Default for PpuState {
 }
 
 pub struct FrameBuffer {
-    data: [u8; (4 * VISIBLE_HIGHT * VISIBLE_WIDTH)],
+    data: [u8; 4 * VISIBLE_HIGHT * VISIBLE_WIDTH],
 }
 
 impl FrameBuffer {
