@@ -3,14 +3,12 @@ extern crate log;
 extern crate clap;
 use clap::arg;
 use clap::Command;
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Pixels, SurfaceTexture};
 use std::collections::VecDeque;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
-use std::time::Instant;
-use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::{Event, VirtualKeyCode, WindowEvent};
+use winit::dpi::LogicalSize;
+use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
@@ -47,17 +45,21 @@ fn main() {
         .get_matches();
 
     // Load the contents of the ROM
-    let path = Path::new(matches.value_of("ROM").unwrap());
+    if let Some(rom_path) = matches.get_one::<String>("ROM") {
 
-    let rom = Rom::from_file(&path).unwrap();
+        let path = Path::new(rom_path);
+        let rom = Rom::from_file(&path).unwrap();
 
-    info!("Loaded ROM file: {}", rom);
+        info!("Loaded ROM file: {}", rom);
+        
+        run(rom);
+    }
 
-    run(rom).unwrap();
 }
 
-fn run(rom: Rom) -> Result<(), Error> {
-    let event_loop = EventLoop::new();
+fn run(rom: Rom) {
+    let event_loop = EventLoop::new().unwrap();
+
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
@@ -70,14 +72,8 @@ fn run(rom: Rom) -> Result<(), Error> {
 
     let mut pixels = {
         let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)?
-    };
-
-    let scale = 2;
-    window.set_inner_size(PhysicalSize::new(
-        window.inner_size().width * scale,
-        window.inner_size().height * scale,
-    ));
+        Pixels::new(WIDTH, HEIGHT, surface_texture)
+    }.unwrap();
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -138,43 +134,37 @@ fn run(rom: Rom) -> Result<(), Error> {
         });
     }
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    let _ = event_loop.run(move |event, elwt| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
                 println!("The close button was pressed; stopping");
-                *control_flow = ControlFlow::Exit
-            }
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput { input, .. },
-                ..
-            } => {
-                if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
-                    *control_flow = ControlFlow::Exit;
-                }
-            }
-            Event::WindowEvent {
+                elwt.exit();
+            },
+            Event::WindowEvent { 
                 event: WindowEvent::Resized(size),
                 ..
             } => {
-                pixels.resize_surface(size.width, size.height);
-            }
-            Event::RedrawEventsCleared => {
-                *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(33));
-
+                pixels.resize_surface(size.width, size.height).unwrap();
+            },
+            Event::AboutToWait => {
                 {
                     let frame = frame.lock().unwrap();
-                    frame.draw(pixels.get_frame());
+                    frame.draw(pixels.frame_mut());
                 }
                 window.request_redraw();
-            }
-            Event::RedrawRequested(_) => {
-                // May use this later
+            },
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..                
+            } => {
                 pixels.render().unwrap();
             }
-            _ => (),
+            _ => ()
         }
     });
 }
