@@ -171,7 +171,13 @@ impl<'a> MemoryMap {
             0x4000..=0x401f => {
                 // IO Registers
                 match address {
-                    0x4014 => self.ppu.write_oamdma(val),
+                    0x4014 => {
+                        info!("write_oamdma PPU: OAMDMA = {:02x}", val);
+                        for i in 0..256 {
+                            let val = self.cpu_read_u8(i + (val as usize * 0x100) as usize, true);
+                            self.ppu.write_oamdma(i, val);
+                        };
+                    }
                     _ => {
                         // NES APU and IO registers
                         warn!(

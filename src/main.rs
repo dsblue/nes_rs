@@ -104,32 +104,29 @@ fn run(rom: Rom) {
             cpu.power_on_reset(&mut mm);
 
             loop {
-                for _ in 0..10_000 {
-                    cpu.tick(&mut mm, &mut events);
-                    mm.tick_ppu(&mut events);
-                    mm.tick_ppu(&mut events);
-                    mm.tick_ppu(&mut events);
+                cpu.tick(&mut mm, &mut events);
+                mm.tick_ppu(&mut events);
+                mm.tick_ppu(&mut events);
+                mm.tick_ppu(&mut events);
 
-                    // Handle any generated events
-                    while let Some(e) = events.pop_back() {
-                        match e {
-                            ppu::Event::Reset => {
-                                cpu.reset(&mut mm);
-                            }
-                            ppu::Event::Nmi => {
-                                info!("NMI-");
-                                cpu.nmi();
-                            }
-                            ppu::Event::VBlank => (),
+                // Handle any generated events
+                while let Some(e) = events.pop_back() {
+                    match e {
+                        ppu::Event::Reset => {
+                            cpu.reset(&mut mm);
                         }
-                    }
-
-                    if !is_running.load(Ordering::SeqCst) {
-                        println!("CTRL^C, Stopping Emulation");
-                        return;
+                        ppu::Event::Nmi => {
+                            info!("NMI-");
+                            cpu.nmi();
+                        }
+                        ppu::Event::VBlank => (),
                     }
                 }
-                thread::sleep(std::time::Duration::from_millis(10));
+
+                if !is_running.load(Ordering::SeqCst) {
+                    println!("CTRL^C, Stopping Emulation");
+                    return;
+                }
             }
         });
     }

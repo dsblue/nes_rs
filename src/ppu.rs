@@ -1,3 +1,5 @@
+use rgb::AsPixels;
+use rgb::ComponentBytes;
 /**
  * PPU Model
  *
@@ -11,6 +13,7 @@
  *
  */
 use rgb::ComponentSlice;
+use rgb::RGBA;
 use rgb::RGBA8;
 use std::collections::VecDeque;
 use std::default::Default;
@@ -26,12 +29,13 @@ const VISIBLE_HIGHT: usize = 240;
 
 const PPUCTRL_V: u8 = 0x80;
 const _PPUCTRL_P: u8 = 0x40;
-const _PPUCTRL_H: u8 = 0x20;
+const PPUCTRL_H: u8 = 0x20;
 const PPUCTRL_B: u8 = 0x10;
-const _PPUCTRL_S: u8 = 0x08;
+const PPUCTRL_S: u8 = 0x08;
 const PPUCTRL_I: u8 = 0x04;
 
 const PPUSTATUS_VBLANK: u8 = 0x80;
+const PPUSTATUS_SPRITE0HIT: u8 = 0x40;
 
 #[derive(Debug)]
 pub enum Event {
@@ -103,7 +107,6 @@ pub struct Ppu2c02 {
     reg_oamaddr: u8,
     reg_oamdata: u8,
     reg_ppudata: u8,
-    reg_oamdma: u8,
 
     scanline: usize,
     cycle: usize,
@@ -144,7 +147,6 @@ impl std::default::Default for Ppu2c02 {
             reg_oamaddr: 0,
             reg_oamdata: 0,
             reg_ppudata: 0,
-            reg_oamdma: 0,
             scanline: 0,
             ppu_addr: 0,
             ppu_addr_temp: 0,
@@ -185,12 +187,12 @@ impl Ppu2c02 {
             0x3c00..=0x3eff => self.nametables[3].data[(addr & 0x3ff) as usize] = val,
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
-                    self.palette[0] = val;
+                    self.palette[0x0c & addr] = val;
                 } else {
                     self.palette[0x1f & addr] = val;
                 }
             }
-            _ => error!("PPU Memory write out-if-range: {:04x}", addr),
+            _ => error!("PPU Memory write out-of-range: {:04x}", addr),
         }
     }
 
@@ -208,13 +210,13 @@ impl Ppu2c02 {
             0x3c00..=0x3eff => self.nametables[3].data[(addr & 0x3ff) as usize],
             0x3f00..=0x3fff => {
                 if (0b11 & addr) == 0 {
-                    self.palette[0]
+                    self.palette[0x0c & addr]
                 } else {
                     self.palette[0x1f & addr]
                 }
             }
             _ => {
-                error!("PPU Memory write out-if-range: {:04x}", addr);
+                error!("PPU Memory read out-of-range: {:04x}", addr);
                 0xff
             }
         }
@@ -266,12 +268,11 @@ impl Ppu2c02 {
         }
     }
 
-    pub fn write_oamdma(&mut self, val: u8) {
-        info!("write_oamdma PPU: OAMDMA = {:02x}", val);
-        self.reg_oamdma = val;
+    pub fn write_oamdma(&mut self, offset: usize, val: u8) {
+        self.oam[offset] = val;
     }
 
-    pub fn peek_reg(&mut self, offset: u8) -> u8 {
+    pub fn peek_reg(&self, offset: u8) -> u8 {
         match offset {
             0x00 => self.reg_ppuctrl,
             0x01 => self.reg_ppumask,
@@ -363,6 +364,32 @@ impl Ppu2c02 {
         self.count = 0;
     }
 
+    fn read_tile(&self) -> [[RGBA8; 8]; 8] {
+        // Return a blank 8x8 tile
+        let mut tile: [[RGBA<u8>; 8]; 8] = Default::default();
+        for (_row, val) in tile.iter_mut().enumerate() {
+            for (_col, val) in val.iter_mut().enumerate() {
+                *val = RGBA8::new(44,55,100,0xff);
+            }
+        }
+        tile
+    }
+
+    fn pattern_decode(&self, addr: usize, palette: usize)  -> [[RGBA8; 8]; 8] {
+        let mut tile: [[RGBA<u8>; 8]; 8] = Default::default();
+
+        for i in 0..8 {
+            let p0 = self.read_u8(addr + i) as usize;
+            let p1 = self.read_u8(addr + 8 + i) as usize;
+            for j in 0..8 {
+                let index = ((((1 << j) & p0) != 0) as usize) + (((((1 << j) & p1) != 0) as usize) << 1);
+                let index = self.palette[0x10 + index] as usize;
+                tile[i][j] = self.ntsc[index];
+            }
+        }
+        tile
+    }
+
     pub fn tick(&mut self, e: &mut VecDeque<Event>) {
         let mut render = false;
 
@@ -376,7 +403,8 @@ impl Ppu2c02 {
             240 => {}
             241 => {
                 if self.cycle == 1 {
-                    self.reg_ppustatus = self.reg_ppustatus | PPUSTATUS_VBLANK;
+                    self.reg_ppustatus =
+                        self.reg_ppustatus | PPUSTATUS_VBLANK | PPUSTATUS_SPRITE0HIT;
                     if (self.reg_ppuctrl & PPUCTRL_V) == PPUCTRL_V {
                         info!("NMI...");
 
@@ -392,6 +420,7 @@ impl Ppu2c02 {
             261 => {
                 if self.cycle == 1 {
                     self.reg_ppustatus = self.reg_ppustatus & !PPUSTATUS_VBLANK;
+                    self.reg_ppustatus = self.reg_ppustatus & !PPUSTATUS_SPRITE0HIT;
                 }
             }
             _ => (),
@@ -401,7 +430,7 @@ impl Ppu2c02 {
             let mut frame = self.frame_buffer.lock().unwrap();
 
             let nt = (self.reg_ppuctrl & 0b11) as usize;
-            let pattern = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_B) == PPUCTRL_B) as usize;
+            let pattern = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_B) != 0) as usize;
 
             for (i, pixel) in frame.data.chunks_exact_mut(4).enumerate() {
                 let row = i / VISIBLE_WIDTH;
@@ -432,6 +461,20 @@ impl Ppu2c02 {
                 let rgba = self.ntsc[index];
 
                 pixel.copy_from_slice(rgba.as_slice());
+            }
+
+            let tall_sprite = (self.reg_ppuctrl & PPUCTRL_H) != 0;
+
+            for sprite in self.oam.chunks(4) {
+                let bank = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_S) != 0) as usize;
+                let tile = self.pattern_decode(bank + (sprite[1] as usize * 16), sprite[2] as usize);
+
+                for (i, row) in tile.iter().enumerate() {
+                    let offset = 4 * ((VISIBLE_WIDTH * sprite[0] as usize + sprite[3] as usize) + i * VISIBLE_WIDTH);
+                    if offset+8*4 < frame.data.len() {
+                        frame.data[offset..offset+(8*4)].copy_from_slice(row.as_slice().as_bytes());
+                    }
+                }
             }
 
             if false {
