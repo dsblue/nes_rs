@@ -37,6 +37,10 @@ const PPUCTRL_I: u8 = 0x04;
 const PPUSTATUS_VBLANK: u8 = 0x80;
 const PPUSTATUS_SPRITE0HIT: u8 = 0x40;
 
+const OAM_FLIP_VERT: u8 = 0x80;
+const OAM_FLIP_HORI: u8 = 0x40;
+const OAM_PRIORITY: u8 = 0x20;
+
 #[derive(Debug)]
 pub enum Event {
     Reset,
@@ -99,6 +103,29 @@ impl std::default::Default for Nametable {
 type Palette = [u8; 0x20];
 
 type Oam = [u8; 256];
+
+// struct Sprite {
+//     data: [[u8; 8]; 8],
+// }
+
+// struct Pattern;
+
+// struct PatternTable;
+
+// struct Name
+
+
+// impl Sprite {
+//     fn from_oam(oam: &Oam, index) -> Self {
+//         Sprite {
+//             data
+//         }
+//     }
+
+//     fn combine_with( ) -> Sprite;
+//     fn bytes() -> &[u8];
+//     fn to_pixels() -> RGBA();
+// }
 
 pub struct Ppu2c02 {
     reg_ppuctrl: u8,
@@ -384,7 +411,7 @@ impl Ppu2c02 {
             for j in 0..8 {
                 let index = ((((1 << j) & p0) != 0) as usize) + (((((1 << j) & p1) != 0) as usize) << 1);
                 let index = self.palette[0x10 + index] as usize;
-                tile[i][j] = self.ntsc[index];
+                tile[i][j] = if index == 0 { RGBA::new(0,0,0,0) } else { self.ntsc[index] }
             }
         }
         tile
@@ -467,9 +494,17 @@ impl Ppu2c02 {
 
             for sprite in self.oam.chunks(4) {
                 let bank = 0x1000 * ((self.reg_ppuctrl & PPUCTRL_S) != 0) as usize;
-                let tile = self.pattern_decode(bank + (sprite[1] as usize * 16), sprite[2] as usize);
+                let mut tile = self.pattern_decode(bank + (sprite[1] as usize * 16), 0x3 & sprite[2] as usize);
 
-                for (i, row) in tile.iter().enumerate() {
+                if sprite[2] & OAM_FLIP_VERT != 0 {
+                    tile.reverse();
+                }
+
+                for (i, row) in tile.iter_mut().enumerate() {
+                    if sprite[2] & OAM_FLIP_HORI == 0 {
+                        row.reverse();
+                    }
+    
                     let offset = 4 * ((VISIBLE_WIDTH * sprite[0] as usize + sprite[3] as usize) + i * VISIBLE_WIDTH);
                     if offset+8*4 < frame.data.len() {
                         frame.data[offset..offset+(8*4)].copy_from_slice(row.as_slice().as_bytes());
