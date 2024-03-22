@@ -7,6 +7,18 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Launch Mario",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--package=nes_rs"
+                ]
+            },
+            "args": ["Super Mario Bros. (World).nes"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'nes_rs'",
             "cargo": {
                 "args": [
@@ -39,7 +51,7 @@
                 }
             },
             "args": [
-                "nestest.nes"
+                "test/nestest.nes"
             ],
             "cwd": "${workspaceFolder}"
         },

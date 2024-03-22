@@ -102,11 +102,15 @@ impl std::default::Default for Nametable {
 
 type Palette = [u8; 0x20];
 
-type Oam = [u8; 256];
+type Oam = [u8; 8 * 64];
 
-// struct Sprite {
-//     data: [[u8; 8]; 8],
-// }
+struct Tile8x8 {
+    data: [u8; 8 * 8],
+}
+
+struct Sprite {
+    data: [[u8; 8]; 8],
+}
 
 // struct Pattern;
 
@@ -114,18 +118,40 @@ type Oam = [u8; 256];
 
 // struct Name
 
+impl Sprite {
+    fn pattern_decode(pattern: &[u8; 8 *2], palette: usize)  -> [[RGBA8; 8]; 8] {
+        let mut tile: [[RGBA<u8>; 8]; 8] = Default::default();
 
-// impl Sprite {
-//     fn from_oam(oam: &Oam, index) -> Self {
-//         Sprite {
-//             data
-//         }
-//     }
+        for i in 0..8 {
+            let p0 = pattern[i] as usize;
+            let p1 = pattern[i + 8] as usize;
+            for j in 0..8 {
+                let index = ((((1 << j) & p0) != 0) as usize) + (((((1 << j) & p1) != 0) as usize) << 1);
+                //let index = self.palette[0x10 + index] as usize;
+                //tile[i][j] = if index == 0 { RGBA::new(0,0,0,0) } else { self.ntsc[index] }
+            }
+        }
+        tile
+    }
 
-//     fn combine_with( ) -> Sprite;
-//     fn bytes() -> &[u8];
-//     fn to_pixels() -> RGBA();
-// }
+    // fn from_oam(oam_data: &[u8; 4], reg_ppuctrl: u8) -> Self {
+    //     let bank = 0x1000 * ((reg_ppuctrl & PPUCTRL_S) != 0) as usize;
+    //     let mut tile = pattern_decode(bank + (oam_data[1] as usize * 16), 0x3 & oam_data[2] as usize);
+
+    //         // if sprite[2] & OAM_FLIP_VERT != 0 {
+    //         //     tile.reverse();
+    //         // }
+    //     }
+
+    //     Sprite {
+    //         data
+    //     }
+    // }
+
+    // fn combine_with( ) -> Sprite;
+    // fn bytes() -> &[u8];
+    // fn to_pixels() -> RGBA();
+}
 
 pub struct Ppu2c02 {
     reg_ppuctrl: u8,
@@ -416,6 +442,10 @@ impl Ppu2c02 {
         }
         tile
     }
+
+
+    //fn apply_tile(&mut frame: &[u8], tile: &[u8[u8]])
+
 
     pub fn tick(&mut self, e: &mut VecDeque<Event>) {
         let mut render = false;
