@@ -39,7 +39,7 @@
                 }
             },
             "args": [
-                "nestest.nes"
+                "test/nestest.nes"
             ],
             "cwd": "${workspaceFolder}"
         },

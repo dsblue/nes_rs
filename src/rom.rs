@@ -1,8 +1,9 @@
+use crate::prelude::*;
+
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use std::fmt;
 use std::fs::File;
-use std::io;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -27,29 +28,27 @@ pub struct Rom {
 }
 
 impl Rom {
-    pub fn from_file(path: &Path) -> io::Result<Rom> {
-        let mut file = match File::open(path) {
-            Err(file) => panic!("No file {}", file),
-            Ok(file) => file,
-        };
+    pub fn from_file(path: &Path) -> Result<Rom> {
+
+        let mut file = File::open(path)?;
 
         // Parse the ROM file
-        if 0x4e45531a != file.read_u32::<BigEndian>().unwrap() {
-            panic!("File not in iNES format");
+        if 0x4e45531a != file.read_u32::<BigEndian>()? {
+            return Err(Error::Generic(f!("File not in iNES format")));
         }
 
-        let prg_size = file.read_u8().unwrap() as usize * 16384;
-        let chr_size = file.read_u8().unwrap() as usize * 8192;
-        let flags_6: u8 = file.read_u8().unwrap();
-        let flags_7: u8 = file.read_u8().unwrap();
-        let _flags_8: u8 = file.read_u8().unwrap();
-        let _flags_9: u8 = file.read_u8().unwrap();
-        let flags_10: u8 = file.read_u8().unwrap();
+        let prg_size = file.read_u8()? as usize * 16384;
+        let chr_size = file.read_u8()? as usize * 8192;
+        let flags_6: u8 = file.read_u8()?;
+        let flags_7: u8 = file.read_u8()?;
+        let _flags_8: u8 = file.read_u8()?;
+        let _flags_9: u8 = file.read_u8()?;
+        let flags_10: u8 = file.read_u8()?;
 
         file.seek(SeekFrom::Current(5))?;
 
         if (0b00001100 & flags_7) == 0b00001000 {
-            panic!("NES 2.0 format not supported");
+            return Err(Error::Generic(f!("NES 2.0 format not supported")));
         }
 
         let mapper = (0xf0 & flags_6) >> 4 | (flags_7 & 0xf0);
@@ -57,14 +56,14 @@ impl Rom {
         // Read the trainer if it exists
         if 0b100 & flags_6 != 0 {
             let mut buffer = [0u8; 512];
-            file.read(&mut buffer).unwrap();
+            file.read(&mut buffer)?;
         }
 
         let mut prg_rom = vec![0u8; prg_size];
-        file.read_exact(&mut prg_rom).unwrap();
+        file.read_exact(&mut prg_rom)?;
 
         let mut chr_rom = vec![0u8; chr_size];
-        file.read_exact(&mut chr_rom).unwrap();
+        file.read_exact(&mut chr_rom)?;
 
         Ok(Rom {
             prg_size,

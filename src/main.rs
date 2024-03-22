@@ -17,6 +17,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
+mod error;
+mod prelude;
 mod mem;
 mod ppu;
 mod rom;
@@ -48,11 +50,15 @@ fn main() {
     if let Some(rom_path) = matches.get_one::<String>("ROM") {
 
         let path = Path::new(rom_path);
-        let rom = Rom::from_file(&path).unwrap();
-
-        info!("Loaded ROM file: {}", rom);
-        
-        run(rom);
+        match Rom::from_file(&path) {
+            Ok(rom) => {
+                info!("Loaded ROM file: {}", rom);
+                run(rom);
+            },
+            Err(error) => {
+                println!("{}", error.to_string());
+            }
+        }
     }
 
 }

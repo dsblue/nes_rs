@@ -10,6 +10,8 @@
  *
  *
  */
+use crate::prelude::*;
+
 use rgb::ComponentSlice;
 use rgb::RGBA8;
 use std::collections::VecDeque;
@@ -324,17 +326,12 @@ impl Ppu2c02 {
 impl Ppu2c02 {
     pub fn new(chr_rom: Vec<u8>) -> Ppu2c02 {
         let mut p = Ppu2c02::default();
-
-        let mut file = match File::open("default.pal") {
-            Err(file) => panic!("No palette file {}", file),
-            Ok(file) => file,
-        };
-
         let mut buf = Vec::new();
 
-        if let Err(_) = file.read_to_end(&mut buf) {
-            panic!("Could not read palette data")
-        }
+        File::open("default.pal")
+            .expect(f!("No palette file").as_str())
+            .read_to_end(&mut buf)
+            .expect("Could not read palette data");
 
         for (_, c) in buf.chunks_exact(3).enumerate() {
             p.ntsc.push(RGBA8 {
