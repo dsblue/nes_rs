@@ -4,23 +4,25 @@ extern crate clap;
 use clap::arg;
 use clap::Command;
 use pixels::{Pixels, SurfaceTexture};
+use ppu::FrameBuffer;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::thread;
+use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
-use winit::window::WindowBuilder;
+use winit::window::Window;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 mod error;
-mod prelude;
 mod mem;
 mod ppu;
+mod prelude;
 mod rom;
 mod rp2a03;
 
@@ -31,6 +33,78 @@ use rp2a03::Cpu6502;
 
 const WIDTH: u32 = 256;
 const HEIGHT: u32 = 240;
+
+#[derive(Default)]
+struct App {
+    window: Option<Window>,
+    pixels: Option<Pixels>,
+
+    frame: Arc<Mutex<FrameBuffer>>,
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.window = Some({
+            let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_title("NES RS Emulator Main PPU Window")
+                        .with_inner_size(size)
+                        .with_min_inner_size(size),
+                )
+                .unwrap()
+        });
+
+        if let Some(window) = &self.window {
+            self.pixels = Some(
+                {
+                    let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &window);
+                    Pixels::new(WIDTH, HEIGHT, surface_texture)
+                }
+                .unwrap(),
+            );
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let Some(window) = self.window.as_mut() {
+            if let Some(pixel) = self.pixels.as_mut() {
+                let frame = self.frame.lock().unwrap();
+                window.pre_present_notify();
+                frame.draw(pixel.frame_mut());
+                window.request_redraw();
+            }
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::Resized(size) => {
+                if let Some(pixels) = self.pixels.as_mut() {
+                    pixels.resize_surface(size.width, size.height).unwrap();
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                if let Some(pixels) = self.pixels.as_mut() {
+                    let frame = self.frame.lock().unwrap();
+                    frame.draw(pixels.frame_mut());
+                    pixels.render().unwrap();
+                }
+            }
+            _ => (),
+        }
+    }
+}
 
 fn main() {
     env_logger::init();
@@ -48,43 +122,28 @@ fn main() {
 
     // Load the contents of the ROM
     if let Some(rom_path) = matches.get_one::<String>("ROM") {
-
         let path = Path::new(rom_path);
         match Rom::from_file(&path) {
             Ok(rom) => {
                 info!("Loaded ROM file: {}", rom);
                 run(rom);
-            },
+            }
             Err(error) => {
                 println!("{}", error.to_string());
             }
         }
     }
-
 }
 
 fn run(rom: Rom) {
     let event_loop = EventLoop::new().unwrap();
 
-    let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        WindowBuilder::new()
-            .with_title("NES RS Emulator Main PPU Window")
-            .with_inner_size(size)
-            .with_min_inner_size(size)
-            .build(&event_loop)
-            .unwrap()
-    };
-
-    let mut pixels = {
-        let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)
-    }.unwrap();
-
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
-    let frame = Arc::new(Mutex::new(ppu::FrameBuffer::default()));
+    let mut app = App::default();
+
+    app.frame = Arc::new(Mutex::new(ppu::FrameBuffer::default()));
 
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
@@ -95,7 +154,7 @@ fn run(rom: Rom) {
 
     {
         let is_running = running.clone();
-        let frame = Arc::clone(&frame);
+        let frame = Arc::clone(&app.frame);
 
         thread::spawn(move || {
             let mut cpu = Cpu6502::new();
@@ -142,35 +201,5 @@ fn run(rom: Rom) {
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let _ = event_loop.run(move |event, elwt| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                println!("The close button was pressed; stopping");
-                elwt.exit();
-            },
-            Event::WindowEvent { 
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                pixels.resize_surface(size.width, size.height).unwrap();
-            },
-            Event::AboutToWait => {
-                {
-                    let frame = frame.lock().unwrap();
-                    frame.draw(pixels.frame_mut());
-                }
-                window.request_redraw();
-            },
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..                
-            } => {
-                pixels.render().unwrap();
-            }
-            _ => ()
-        }
-    });
+    event_loop.run_app(&mut app).unwrap();
 }

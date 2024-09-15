@@ -14,8 +14,8 @@ log = "0.4.14"
 thiserror = "1"
 env_logger = "0.11.1"
 byteorder = "1.4.3"
-winit = { version = "0.29.9", features = ["rwh_05"]}
-winit_input_helper = "0.15.2"
+winit = { version = "0.30.5", features = ["rwh_05"]}
+winit_input_helper = "0.16.0"
 pixels = "0.13.0"
 rgb = "0.8.27"
 clap = "4.4.16"
