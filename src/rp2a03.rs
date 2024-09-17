@@ -15,6 +15,8 @@
  *
  * Used Opcode names from: http://www.oxyron.de/html/opcodes02.html
  */
+use crate::prelude::*;
+
 use std::collections::VecDeque;
 use std::string::String;
 
@@ -123,21 +125,21 @@ impl AddressMode {
         use AddressMode::*;
 
         match *self {
-            Imp => format!(""),
-            Acc => format!("A"),
-            Imm => format!("#${:02x}", o.0),
-            Adr => format!("${:04x}", o.1),
-            Rel => format!("${:04x}", o.2),
-            Zp => format!("${:02x}", o.0),
-            Zpx => format!("${:02x},X", o.0),
-            Zpy => format!("${:02x},Y", o.0),
-            Abs => format!("${:04x}", o.1),
-            Abx => format!("${:04x},X", o.1),
-            Aby => format!("${:04x},Y", o.1),
-            Ind => format!("(${:04x})", o.1),
-            Izx => format!("(${:02x},X)", o.0),
-            Izy => format!("(${:02x}),Y", o.0),
-            Err => format!(""),
+            Imp => f!(""),
+            Acc => f!("A"),
+            Imm => f!("#${:02x}", o.0),
+            Adr => f!("${:04x}", o.1),
+            Rel => f!("${:04x}", o.2),
+            Zp => f!("${:02x}", o.0),
+            Zpx => f!("${:02x},X", o.0),
+            Zpy => f!("${:02x},Y", o.0),
+            Abs => f!("${:04x}", o.1),
+            Abx => f!("${:04x},X", o.1),
+            Aby => f!("${:04x},Y", o.1),
+            Ind => f!("(${:04x})", o.1),
+            Izx => f!("(${:02x},X)", o.0),
+            Izy => f!("(${:02x}),Y", o.0),
+            Err => f!(""),
         }
     }
 
@@ -845,10 +847,10 @@ impl Cpu6502 {
             let (name, operand, size) = inst.info(context);
 
             if size == 0 {
-                s = format!("{}Unknown inst: (0x{:02x}) {}, break\n", s, op, name);
+                s = f!("{}Unknown inst: (0x{:02x}) {}, break\n", s, op, name);
                 break;
             } else {
-                s = format!(
+                s = f!(
                     "{}{:04x}: {} {:<8}\n",
                     s,
                     address,
@@ -871,7 +873,7 @@ impl Cpu6502 {
         let imm_addr = (b2 as u16) << 8 | b1 as u16;
         let cal_addr = self.addr;
         let (name, operand, _) = self.inst.info((b1, imm_addr, cal_addr));
-        format!(
+        f!(
             "{:04x}: {} {:<8}\t{} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:04x} => {}",
             self.reg_pc,
             name.to_ascii_uppercase(),
@@ -897,13 +899,13 @@ impl Cpu6502 {
         let imm_addr = (b2 as u16) << 8 | b1 as u16;
         let cal_addr = self.addr;
         let (name, operand, size) = inst.info((b1, imm_addr, cal_addr));
-        format!(
+        f!(
             "{:04X}  {}{:>5} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             pc,
             match size {
-                1 => format!("{:02X}      ", b0),
-                2 => format!("{:02X} {:02X}   ", b0, b1),
-                3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
+                1 => f!("{:02X}      ", b0),
+                2 => f!("{:02X} {:02X}   ", b0, b1),
+                3 => f!("{:02X} {:02X} {:02X}", b0, b1, b2),
                 _ => panic!("Bad Instruction Size"),
             },
             name.to_ascii_uppercase(),
@@ -941,24 +943,24 @@ impl Cpu6502 {
                 | Instruction::Sty(m) => match m {
                     AddressMode::Abs | AddressMode::Zp =>
                         operand.to_ascii_uppercase()
-                            + &format!(" = {:02X}", self.debugu8).to_owned(),
+                            + &f!(" = {:02X}", self.debugu8).to_owned(),
                     AddressMode::Zpx | AddressMode::Zpy =>
                         operand.to_ascii_uppercase()
-                            + &format!(
+                            + &f!(
                                 " @ {:02X} = {:02X}",
                                 self.addr.to_owned(),
                                 self.debugu8.to_owned(),
                             ),
                     AddressMode::Abx | AddressMode::Aby =>
                         operand.to_ascii_uppercase()
-                            + &format!(
+                            + &f!(
                                 " @ {:04X} = {:02X}",
                                 self.addr.to_owned(),
                                 self.debugu8.to_owned(),
                             ),
                     AddressMode::Izx =>
                         operand.to_ascii_uppercase()
-                            + &format!(
+                            + &f!(
                                 " @ {:02X} = {:04X} = {:02X}",
                                 self.ptr.wrapping_sub(1).to_owned(),
                                 self.addr.to_owned(),
@@ -966,7 +968,7 @@ impl Cpu6502 {
                             ),
                     AddressMode::Izy =>
                         operand.to_ascii_uppercase()
-                            + &format!(
+                            + &f!(
                                 " = {:04X} @ {:04X} = {:02X}",
                                 self.debugu16.to_owned(),
                                 self.addr.to_owned(),
@@ -974,7 +976,7 @@ impl Cpu6502 {
                             ),
                     AddressMode::Ind =>
                         operand.to_ascii_uppercase()
-                            + &format!(" = {:04X}", self.debugu16.to_owned()),
+                            + &f!(" = {:04X}", self.debugu16.to_owned()),
                     _ => operand.to_ascii_uppercase(),
                 },
                 _ => operand.to_ascii_uppercase(),
@@ -988,7 +990,7 @@ impl Cpu6502 {
     }
 
     fn stack_as_string(&self, mm: &mut MemoryMap) -> String {
-        format!(
+        f!(
             "[{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}]",
             peek_u8!(mm, self.reg_s as usize + 0x101),
             peek_u8!(mm, self.reg_s as usize + 0x102),
@@ -1006,7 +1008,7 @@ impl Cpu6502 {
         let mut addr = addr;
 
         for _ in 0..len {
-            s = format!(
+            s = f!(
                 "{}{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}\n",
                 s,
                 addr,
@@ -1025,7 +1027,7 @@ impl Cpu6502 {
     }
 
     fn status_as_string(&self) -> String {
-        format!(
+        f!(
             "[{}{}..{}{}{}{}]",
             if self.reg_p & N == N { "N" } else { "n" },
             if self.reg_p & V == V { "V" } else { "v" },
@@ -2795,13 +2797,13 @@ mod test {
             let imm_addr = (b2 as u16) << 8 | b1 as u16;
             let cal_addr = cpu.addr;
             let (name, operand, size) = inst.info((b1, imm_addr, cal_addr));
-            format!(
+            f!(
                 "{:04X}  {}{:>5} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
                 pc,
                 match size {
-                    1 => format!("{:02X}      ", b0),
-                    2 => format!("{:02X} {:02X}   ", b0, b1),
-                    3 => format!("{:02X} {:02X} {:02X}", b0, b1, b2),
+                    1 => f!("{:02X}      ", b0),
+                    2 => f!("{:02X} {:02X}   ", b0, b1),
+                    3 => f!("{:02X} {:02X} {:02X}", b0, b1, b2),
                     _ => panic!("Bad Instruction Size"),
                 },
                 name.to_ascii_uppercase(),
@@ -2839,24 +2841,24 @@ mod test {
                     | Instruction::Sty(m) => match m {
                         AddressMode::Abs | AddressMode::Zp =>
                             operand.to_ascii_uppercase()
-                                + &format!(" = {:02X}", cpu.debugu8).to_owned(),
+                                + &f!(" = {:02X}", cpu.debugu8).to_owned(),
                         AddressMode::Zpx | AddressMode::Zpy =>
                             operand.to_ascii_uppercase()
-                                + &format!(
+                                + &f!(
                                     " @ {:02X} = {:02X}",
                                     cpu.addr.to_owned(),
                                     cpu.debugu8.to_owned(),
                                 ),
                         AddressMode::Abx | AddressMode::Aby =>
                             operand.to_ascii_uppercase()
-                                + &format!(
+                                + &f!(
                                     " @ {:04X} = {:02X}",
                                     cpu.addr.to_owned(),
                                     cpu.debugu8.to_owned(),
                                 ),
                         AddressMode::Izx =>
                             operand.to_ascii_uppercase()
-                                + &format!(
+                                + &f!(
                                     " @ {:02X} = {:04X} = {:02X}",
                                     cpu.ptr.wrapping_sub(1).to_owned(),
                                     cpu.addr.to_owned(),
@@ -2864,7 +2866,7 @@ mod test {
                                 ),
                         AddressMode::Izy =>
                             operand.to_ascii_uppercase()
-                                + &format!(
+                                + &f!(
                                     " = {:04X} @ {:04X} = {:02X}",
                                     cpu.debugu16.to_owned(),
                                     cpu.addr.to_owned(),
@@ -2872,7 +2874,7 @@ mod test {
                                 ),
                         AddressMode::Ind =>
                             operand.to_ascii_uppercase()
-                                + &format!(" = {:04X}", cpu.debugu16.to_owned()),
+                                + &f!(" = {:04X}", cpu.debugu16.to_owned()),
                         _ => operand.to_ascii_uppercase(),
                     },
                     _ => operand.to_ascii_uppercase(),
